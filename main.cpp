@@ -9,6 +9,5 @@ int main()
 {
     cout << "Hello world" << endl;
 
-    cout << "Opencv upgrade added." << endl;
     return 0;
 }
