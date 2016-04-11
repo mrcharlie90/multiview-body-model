@@ -15,17 +15,18 @@ using namespace cv;
  */
 
 // Images
-const int g_n_images = 3;
-int g_img_index = 0;
-string g_paths[g_n_images] = {"../imgs/monnalisa1.jpg", "../imgs/monnalisa2.jpg", "../imgs/monnalisa3.jpg"};
-Mat g_imgs[g_n_images];
-Mat g_previous_img; // used for undo operation
+const int g_num_images = 3;
+int g_image_index = 0;
+string g_paths[g_num_images] = {"../imgs/monnalisa1.jpg", "../imgs/monnalisa2.jpg", "../imgs/monnalisa3.jpg"};
+Mat g_images[g_num_images];
+Mat g_previous_image; // used for undo operation
 
 // Window system
-string g_wnd_name = "Window";
+string g_window_name = "Window";
 
 // Keypoints' storage
 vector<KeyPoint> g_keypoints;
+
 
 /*
  * Callbacks
@@ -43,52 +44,74 @@ static void onMouse(int event, int x, int y, int, void* data)
         printf("Keypoint inserted at (%d, %d).\n", x, y);
 
         // Save the current state
-        g_previous_img = g_imgs[g_img_index].clone();
+        g_previous_image = g_images[g_image_index].clone();
 
         // Drawing a red circle in the keypoint position
-        circle(g_imgs[g_img_index], Point(key.pt.x, key.pt.y), 2, Scalar(0, 0, 255), -1);
-        imshow(g_wnd_name, g_imgs[g_img_index]);
+        circle(g_images[g_image_index], Point(key.pt.x, key.pt.y), 2, Scalar(0, 0, 255), -1);
+        imshow(g_window_name, g_images[g_image_index]);
     }
 }
 
+
+
 int main()
 {
-    // Showing the image
-    namedWindow(g_wnd_name);
-    setMouseCallback(g_wnd_name, onMouse);
+    // Keypoints storage (a vector of keypoints for each image)
+    vector<vector<KeyPoint> > vec_keypoints;
+
+    // Window parameters
+    namedWindow(g_window_name);
+    setMouseCallback(g_window_name, onMouse);
 
     // Going all over the images and finding keypoints by hand
     int c = 0;
-
-    // Showing the first image
-    g_imgs[g_img_index] = imread(g_paths[g_img_index]);
-    imshow(g_wnd_name, g_imgs[g_img_index]);
-
-    while (g_img_index < g_n_images - 1)
+    cout << "Reading keypoints and computing descriptors..." << endl;
+    while (c != 'q' && g_image_index < g_num_images)
     {
-        if (c == 13) // c = 'enter'
+        if (c == 0)
         {
-            g_img_index++;
-            g_imgs[g_img_index] = imread(g_paths[g_img_index]);
-            imshow(g_wnd_name, g_imgs[g_img_index]);
-
-            cout << "Tot keypoints = " << g_keypoints.size() << endl;
+            // Reading and showing the image
+            g_images[g_image_index] = imread(g_paths[g_image_index]);
+            imshow(g_window_name, g_images[g_image_index]);
         }
-        else if (c == 'z') // c = 'z'
-        {
-            // undo operation
-            imshow(g_wnd_name, g_previous_img);
-            g_imgs[g_img_index] = g_previous_img.clone();
 
+        // Catching the character pressed
+        c = waitKey(0);
+
+        if (c == 13)
+        {
+            // Enter is pressed: store the vector of keypoints
+            if (!g_keypoints.empty())
+            {
+                vec_keypoints.push_back(g_keypoints);
+                g_keypoints.clear();
+            }
+
+            // Go to the next image
+            g_image_index++;
+            c = 0;
+        }
+        else if (c == 'z' && !g_keypoints.empty())
+        {
+            // Undo is pressed: undisplay the last keypoint selected
+            imshow(g_window_name, g_previous_image);
+            g_images[g_image_index] = g_previous_image.clone();
+
+            // Remove the last keypoint inserted
             KeyPoint key_removed = g_keypoints.back();
             g_keypoints.pop_back();
 
             printf("Keypoint removed at (%f, %f).\n", key_removed.pt.x, key_removed.pt.y);
         }
-
-        // Go to the next image
-        c = waitKey(0);
     }
+    cout << "done!" << endl;
+
+
+
+
+
+
+
 
     return 0;
 }
