@@ -4,10 +4,12 @@
 
 #include <iostream>
 #include <opencv/highgui.h>
+#include <opencv/cvaux.h>
 
 #include "MultiviewBodyModel.h"
 
 using namespace std;
+using namespace multiviewbodymodel;
 using namespace cv;
 
 /*
@@ -18,7 +20,7 @@ using namespace cv;
 const int g_num_images = 3;
 int g_image_index = 0;
 string g_paths[g_num_images] = {"../imgs/monnalisa1.jpg", "../imgs/monnalisa2.jpg", "../imgs/monnalisa3.jpg"};
-Mat g_images[g_num_images];
+vector<Mat> g_images;
 Mat g_previous_image; // used for undo operation
 
 // Window system
@@ -26,6 +28,9 @@ string g_window_name = "Window";
 
 // Keypoints' storage
 vector<KeyPoint> g_keypoints;
+
+// Temporary variables
+float g_current_confidence;
 
 
 /*
@@ -53,7 +58,6 @@ static void onMouse(int event, int x, int y, int, void* data)
 }
 
 
-
 int main()
 {
     // Keypoints storage (a vector of keypoints for each image)
@@ -65,14 +69,23 @@ int main()
 
     // Going all over the images and finding keypoints by hand
     int c = 0;
-    cout << "Reading keypoints and computing descriptors..." << endl;
+    cout << "Keypoint selection..." << endl;
     while (c != 'q' && g_image_index < g_num_images)
     {
         if (c == 0)
         {
             // Reading and showing the image
-            g_images[g_image_index] = imread(g_paths[g_image_index]);
-            imshow(g_window_name, g_images[g_image_index]);
+            Mat img = imread(g_paths[g_image_index]);
+            if (img.data)
+            {
+                g_images.push_back(img);
+                imshow(g_window_name, g_images[g_image_index]);
+            }
+            else
+            {
+                cerr << "Invalid images" << endl;
+                return -1;
+            }
         }
 
         // Catching the character pressed
@@ -107,11 +120,71 @@ int main()
     cout << "done!" << endl;
 
 
+    ConfidenceDescriptor cd;
+    ViewDetail vd;
+
+    cd.id = 6;
+    cd.confidence = 0.8f;
+    cd.descriptor.create(1, 3, CV_32FC1);
+
+    vd.keypoints_descriptors.push_back(cd);
+
+    cd.id = 3;
+    cd.confidence = 0.9f;
+    cd.descriptor.create(1, 3, CV_32FC1);
+
+    vd.keypoints_descriptors.push_back(cd);
+
+    cd.id = 2;
+    cd.confidence = 0.3f;
+    cd.descriptor.create(1, 3, CV_32FC1);
+
+    vd.keypoints_descriptors.push_back(cd);
+
+    cd.id = 1;
+    cd.confidence = 0.5f;
+    cd.descriptor.create(1, 3, CV_32FC1);
+
+    vd.keypoints_descriptors.push_back(cd);
+
+    vd.angle = 60.0f;
+
+    vector<ViewDetail> views;
+    views.push_back(vd);
+
+    vd.angle = 45.0f;
+    views.push_back(vd);
+
+    MultiviewBodyModel mbm(views);
+
+    mbm.ConfidenceNormalization();
 
 
 
+    // Decriptors computation
+//    Ptr<DescriptorExtractor> descriptor_extractor = DescriptorExtractor::create("SIFT");
+//
+//    vector<Mat> vec_descriptors;
+//    if (!descriptor_extractor.empty())
+//    {
+//        descriptor_extractor->compute(g_images, vec_keypoints, vec_descriptors);
+//    }
+//    cout << "done!" << endl;
+//
+//    cout << "vec_descriptors.size = " << vec_descriptors.size() << endl;
 
 
+
+//    // Matching
+//    BruteForceMatcher<L2<float> > matcher;
+//    vector<DMatch> matches;
+//    matcher.match(vec_descriptors[0], vec_descriptors[1], matches);
+//
+//    namedWindow("matches", 1);
+//    Mat img_matches;
+//    drawMatches(g_images[0], vec_keypoints[0], g_images[1], vec_keypoints[1], matches, img_matches);
+//    imshow("matches", img_matches);
+//    waitKey(0);
 
     return 0;
 }

@@ -6,40 +6,60 @@
 
 #include <iostream>
 #include <vector>
+#include <numeric>
+
 #include <opencv/cv.h>
 #include <opencv2/nonfree/nonfree.hpp>
 
 #ifndef HELLOWORLD_MULTIVIEWBODYMODEL_H
 #define HELLOWORLD_MULTIVIEWBODYMODEL_H
 
-/*
- * Struct for storing a confidence for each
- * keypoint.
- */
 
-struct ConfidenceKeypoint
-{
-    float confidence;
-    cv::KeyPoint keypoint;
-};
+namespace multiviewbodymodel {
 
-class MultiviewBodyModel
-{
-private:
-    // Required Storage
-    std::vector<std::vector<ConfidenceKeypoint> > vec_keypoints;
-    std::vector<float> angles;
+    /*
+     * Struct for storing a confidence for each
+     * keypoint.
+     */
+    struct ConfidenceDescriptor {
+        int id;
+        float confidence;
+        cv::Mat descriptor;
 
-public:
-    MultiviewBodyModel(std::vector<std::vector<ConfidenceKeypoint> >  vec_keypoints, std::vector<float> angles);
+    };
 
-    void addKeypointsVector();
+    struct ViewDetail
+    {
+        float angle;
+        std::vector<ConfidenceDescriptor> keypoints_descriptors;
+        float overall_confidence; // TODO: set default to 1
 
-    double distance(); // TODO: use  initModules_nonfree(); when using SIFT
+    };
 
+    /*
+     * Class definition
+     */
+    class MultiviewBodyModel
+    {
+    private:
+        // Required member variables
+        std::vector<ViewDetail> views;
 
+    public:
 
-};
+        MultiviewBodyModel(std::vector<ViewDetail> view_details);
 
+        void AddDescriptors(ViewDetail view_detail, float angle);
 
+        void ConfidenceNormalization();
+
+        int size();
+
+    };
+
+    /*
+     * Nonmember functions
+     */
+    double Distance(MultiviewBodyModel body1, MultiviewBodyModel body2);
+}
 #endif //HELLOWORLD_MULTIVIEWBODYMODEL_H
