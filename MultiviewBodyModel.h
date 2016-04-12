@@ -15,7 +15,8 @@
 #define HELLOWORLD_MULTIVIEWBODYMODEL_H
 
 
-namespace multiviewbodymodel {
+namespace multiviewbodymodel
+{
 
     /*
      * Struct for storing a confidence for each
@@ -53,13 +54,14 @@ namespace multiviewbodymodel {
 
         void ConfidenceNormalization();
 
+        std::vector<ViewDetail> getViews();
+
         int size();
 
     };
 
-    /*
-     * Nonmember functions
-     */
-    double Distance(MultiviewBodyModel body1, MultiviewBodyModel body2);
+    float overall_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
+
+    std::vector<float> view_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
 }
 #endif //HELLOWORLD_MULTIVIEWBODYMODEL_H
