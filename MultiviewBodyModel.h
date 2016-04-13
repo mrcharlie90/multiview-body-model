@@ -50,13 +50,11 @@ namespace multiviewbodymodel
 
         MultiviewBodyModel(std::vector<ViewDetail> view_details);
 
-        void AddDescriptors(ViewDetail view_detail, float angle);
-
         void ConfidenceNormalization();
 
         std::vector<ViewDetail> getViews();
 
-        int size();
+        unsigned long size();
 
     };
 

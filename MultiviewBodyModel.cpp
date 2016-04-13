@@ -9,12 +9,12 @@ using namespace multiviewbodymodel;
 using namespace std;
 
 /*
- * Comparator used for sorting compound vectors. Each time a new vector
- * is added, the array is sorted by ID (ascend order)
+ * Comparators used for sorting compound vectors.
  */
-bool confidence_comparator(ConfidenceDescriptor c1, ConfidenceDescriptor c2) { return (c1.id < c2.id); }
+bool id_comparator(ConfidenceDescriptor c1, ConfidenceDescriptor c2) { return (c1.id < c2.id); }
 
-bool viewdetail_comparator(ViewDetail vd1, ViewDetail vd2) { return (vd1.angle < vd2.angle); }
+bool angle_comparator(ViewDetail vd1, ViewDetail vd2) { return (vd1.angle < vd2.angle); }
+
 /*
  *  Constructor: accept directly the vector with all views initialized.
  */
@@ -25,21 +25,10 @@ MultiviewBodyModel::MultiviewBodyModel(std::vector<ViewDetail> view_details)
     // Sorting each descriptor in each view
     for (int i = 0; i < view_details.size(); ++i)
     {
-        sort(view_details[i].keypoints_descriptors.begin(), view_details[i].keypoints_descriptors.end(),
-             confidence_comparator);
+        sort(views[i].keypoints_descriptors.begin(), views[i].keypoints_descriptors.end(),
+             id_comparator);
     }
-
 }
-
-void MultiviewBodyModel::AddDescriptors(ViewDetail view_detail, float angle)
-{
-    ConfidenceDescriptor cd;
-
-    // Sorting
-    sort(view_detail.keypoints_descriptors.begin(), view_detail.keypoints_descriptors.end(), confidence_comparator);
-    views.push_back(view_detail);
-}
-
 
 /*
  * Normalize the confidence for each descriptor acquired:
@@ -47,23 +36,27 @@ void MultiviewBodyModel::AddDescriptors(ViewDetail view_detail, float angle)
  */
 void MultiviewBodyModel::ConfidenceNormalization()
 {
+    // Checking views' size
     if (views.size() == 0)
     {
         cerr << "No views acquired. Insert at least one view to call this procedure." << endl;
         return;
     }
 
+    // Confidence normalization
     for (int i = 0; i < views.size(); ++i)
     {
         float overall_conf = 0.0f;
-        int keypoints_number = views[i].keypoints_descriptors.size();
+        unsigned long keypoints_number = views[i].keypoints_descriptors.size();
         vector<ConfidenceDescriptor> keypoint_descriptors = views[i].keypoints_descriptors;
 
+        // Computing the overall confidences sum
         for (int j = 0; j < keypoints_number; ++j)
         {
             overall_conf = overall_conf + views[i].keypoints_descriptors[j].confidence;
         }
 
+        // Normalize each confidence value
         for (int k = 0; k < keypoints_number; ++k)
         {
             float conf = keypoint_descriptors[k].confidence;
@@ -73,17 +66,14 @@ void MultiviewBodyModel::ConfidenceNormalization()
 }
 
 /*
- * Return the number of views acquired.
+ * Returns the number of views acquired.
  */
-int MultiviewBodyModel::size()
-{
-    return views.size();
-}
+unsigned long MultiviewBodyModel::size() { return views.size(); }
 
-std::vector<ViewDetail> MultiviewBodyModel::getViews()
-{
-    return views;
-}
+/**
+ * Returns the views stored.
+ */
+std::vector<ViewDetail> MultiviewBodyModel::getViews() { return views; }
 
 
 /*
@@ -146,8 +136,8 @@ vector<float> multiviewbodymodel::view_distance(MultiviewBodyModel b1, Multiview
     }
 
     // Sorting by angle ascend
-    sort(views1.begin(), views1.end(), viewdetail_comparator);
-    sort(views2.begin(), views2.end(), viewdetail_comparator);
+    sort(views1.begin(), views1.end(), angle_comparator);
+    sort(views2.begin(), views2.end(), angle_comparator);
 
     // Checking angles
     if (!check_angles(views1, views2))
@@ -181,9 +171,9 @@ vector<float> multiviewbodymodel::view_distance(MultiviewBodyModel b1, Multiview
 
             // Computing euclidea distance weighted with the relative confidence
             view_distance += cd1.confidence * cd2.confidence * norm(cd1.descriptor, cd2.descriptor, cv::NORM_L2);
-
-            distances.push_back(view_distance);
         }
+
+        distances.push_back(view_distance);
     }
 
     return distances;
