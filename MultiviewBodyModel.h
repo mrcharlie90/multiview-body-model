@@ -17,49 +17,52 @@
 
 namespace multiviewbodymodel
 {
-
-    /*
-     * Struct for storing a confidence for each
-     * keypoint.
-     */
-    struct ConfidenceDescriptor {
-        int id;
-        float confidence;
-        cv::Mat descriptor;
-
-    };
-
-    struct ViewDetail
-    {
-        float angle;
-        std::vector<ConfidenceDescriptor> keypoints_descriptors;
-        float overall_confidence; // TODO: set default to 1
-
-    };
+    struct ConfidenceDescriptor;
+    struct ViewDetail;
 
     /*
      * Class definition
      */
     class MultiviewBodyModel
     {
-    private:
-        // Required member variables
-        std::vector<ViewDetail> views;
-
     public:
 
         MultiviewBodyModel(std::vector<ViewDetail> view_details);
 
         void ConfidenceNormalization();
-
         std::vector<ViewDetail> getViews();
-
         unsigned long size();
 
+    private:
+        std::vector<ViewDetail> views;
     };
 
-    float overall_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
 
+    /*
+     * Functions
+     */
+    float overall_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
     std::vector<float> view_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
+
+    /*
+     * Struct for storing a confidence for each
+     * keypoint.
+     */
+    struct ConfidenceDescriptor
+    {
+        int id;
+        float confidence;
+        cv::Mat descriptor;
+    };
+
+    struct ViewDetail
+    {
+        std::string Name;
+        float angle;
+        std::vector<ConfidenceDescriptor> keypoints_descriptors;
+        float overall_confidence; // TODO: set default to 1
+    };
+
+
 }
 #endif //HELLOWORLD_MULTIVIEWBODYMODEL_H
