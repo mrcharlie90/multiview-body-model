@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(helloworld)
+project(multiview-body-model)
 
 find_package(PCL 1.7)
 

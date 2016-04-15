@@ -1,69 +1,48 @@
 //
-// Created by Mauro on 07/04/16.
+// Created by Mauro on 15/04/16.
 //
-// OpenCV ver. 2.4
-//
+
+#ifndef MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H
+#define MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H
 
 #include <iostream>
 #include <vector>
 #include <numeric>
-
 #include <opencv/cv.h>
 #include <opencv2/nonfree/nonfree.hpp>
 
-#ifndef HELLOWORLD_MULTIVIEWBODYMODEL_H
-#define HELLOWORLD_MULTIVIEWBODYMODEL_H
+using namespace std;
 
-
-namespace multiviewbodymodel
+namespace  multiviewbodymodel
 {
-    struct ConfidenceDescriptor;
-    struct ViewDetail;
-
-    /*
-     * Class definition
-     */
-    class MultiviewBodyModel
-    {
+    class MultiviewBodyModel {
     public:
-
-        MultiviewBodyModel(std::vector<ViewDetail> view_details);
+        MultiviewBodyModel();
+        MultiviewBodyModel(vector<int> views_id, vector<string> views_names, vector<float> views_angles,
+                           vector<cv::Mat> views_descriptors,
+                           vector<vector<float> > views_descriptors_confidences);
 
         void ConfidenceNormalization();
-        std::vector<ViewDetail> getViews();
-        unsigned long size();
+        vector<float> Distance(MultiviewBodyModel body_model);
+        void ChangeViewDescriptors(int id, cv::Mat descriptors, vector<float> descriptors_confidences);
+
+        void set_views_id(vector<int> views_id);
+        vector<int> views_id();
+        void set_views_descriptors(vector<cv::Mat> views_descriptors);
+        vector<cv::Mat> views_descriptors();
+        void set_views_descriptors_confidences(vector<vector<float> > views_descriptors_confidences);
+        vector<vector<float> > views_descriptors_confidences();
+        void set_views_names(vector<string> names);
+        vector<string> views_names();
+        void set_views_angle(vector<float> views_angles);
+        vector<float> views_angles();
 
     private:
-        std::vector<ViewDetail> views;
-
-
+        vector<int> views_id_; // TODO: useful?
+        vector<string> views_names_;
+        vector<float> views_angles_;
+        vector<cv::Mat> views_descriptors_;
+        vector<vector<float> > views_descriptors_confidences_;
     };
-
-
-    /*
-     * Functions
-     */
-    float overall_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
-    std::vector<float> view_distance(MultiviewBodyModel b1, MultiviewBodyModel b2);
-
-    /*
-     * Struct for storing a confidence for each
-     * keypoint.
-     */
-    struct ConfidenceDescriptor
-    {
-        int id;
-        float confidence;
-        cv::Mat descriptor;
-    };
-
-    struct ViewDetail
-    {
-        std::string name;
-        float angle;
-        std::vector<ConfidenceDescriptor> keypoints_descriptors;
-        float overall_confidence; // TODO: set default to 1
-    };
-
 }
-#endif //HELLOWORLD_MULTIVIEWBODYMODEL_H
+#endif //MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H
