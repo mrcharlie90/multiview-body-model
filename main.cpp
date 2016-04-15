@@ -26,12 +26,16 @@ Mat g_previous_image;
 float g_current_confidence;
 
 // Used for storing selected keypoints
-vector<KeyPoint> g_keypoints_selected;
 int g_keypoints_counter;
+vector<KeyPoint> g_keypoints_selected;
+vector<ConfidenceDescriptor> g_confidence_descriptors;
+
 
 // Window system
 string g_window_name = "Window";
 
+// Used for randomly generated colors
+RNG g_rng;
 
 
 /**
@@ -48,6 +52,11 @@ static void onMouse(int event, int x, int y, int, void* data)
     if (event == EVENT_LBUTTONDOWN)
     {
         KeyPoint key(Point2f(static_cast<float>(x), static_cast<float>(y)), 2);
+        ConfidenceDescriptor cd;
+        cd.id = g_keypoints_counter;
+        cd.confidence = g_current_confidence;
+
+        g_confidence_descriptors.push_back(cd);
         g_keypoints_selected.push_back(key);
 
         printf("Keypoint selected at (%d, %d).\n", x, y);
@@ -55,14 +64,47 @@ static void onMouse(int event, int x, int y, int, void* data)
         // Save the current state
         g_previous_image = g_current_image.clone();
 
+        // Defining a random color for marking the keypoint
+
+        int icolor = (unsigned)g_rng;
+
+
+        Scalar color((icolor & 255), ((icolor>>8) & 255) | 190, ((icolor>>16) & 255) | 190);
+
+        cout << color << endl;
+
         // Drawing a red circle in the keypoint position
-        circle(g_current_image, Point(key.pt.x, key.pt.y), 2, Scalar(0, 0, 255), -1);
+        Point key_position(key.pt.x, key.pt.y);
+        circle(g_current_image, key_position, 2, color, -1);
+
+        // Displaying the key_counter
+        stringstream txt;
+        txt << g_keypoints_counter;
+
+        int fontface = FONT_HERSHEY_SCRIPT_SIMPLEX;
+        double fontscale = 0.5;
+        int thickness = 1;
+
+        int baseline = 0;
+        Size txtsize = getTextSize(txt.str(), fontface, fontscale, thickness, &baseline);
+
+        baseline += thickness;
+
+        Point txtorg((g_current_image.cols - txtsize.width) / 2,
+                     (g_current_image.rows + txtsize.height) / 2);
+
+        putText(g_current_image, txt.str(), key_position, fontface, fontscale, color, thickness, 8);
         imshow(g_window_name, g_current_image);
 
         g_keypoints_counter++;
+        txt.str("");
+
     }
 }
 
+/**
+ * Manage the confidence selection keyboard input.
+ */
  float confidence_selection()
  {
      // Acquire a char
@@ -155,8 +197,11 @@ int main(int argc, char** argv)
         for (int j = 0; j < views_number; ++j)
         {
             int c = 0; // character acquired
-            int k = 0; // frame counter
-            while (k < frames_number && g_keypoints_counter < 26)
+            int frame = 0; // frame counter
+
+            vector<ViewDetail> views;
+            ViewDetail view_detail;
+            while (frame < frames_number)
             {
                 if (c == 0)
                 {
@@ -191,18 +236,28 @@ int main(int argc, char** argv)
                     }
                     cout << "done" << endl;
 
-                    // Storing results
+                    // Storing descriptors and views
+                    for (int k = 0; k < g_keypoints_counter; ++k)
+                        g_confidence_descriptors[k].descriptor = descriptors.row(k);
 
+                    view_detail.angle = 0.0;
+                    view_detail.name = view_name[j];
+                    view_detail.keypoints_descriptors = g_confidence_descriptors;
 
-
+                    // Resetting variables
                     if (!g_keypoints_selected.empty())
                     {
                         g_keypoints_selected.clear();
                         g_keypoints_counter = 0;
                     }
 
-                    // Necessary to show the next image
                     c = 0;
+                    frame++;
+
+                    digit1 = frame / 10;
+                    digit2 = frame % 10;
+
+                    ss.str("");
                 }
                 else if (c == 'z') // WARNING: multiple pressures not managed
                 {
@@ -212,8 +267,11 @@ int main(int argc, char** argv)
 
                     KeyPoint key_removed = g_keypoints_selected.back();
                     g_keypoints_selected.pop_back();
+                    g_confidence_descriptors.pop_back();
 
                     printf("Keypoint removed at (%f, %f).\n", key_removed.pt.x, key_removed.pt.y);
+
+                    g_keypoints_counter--;
 
                 }
                 else if (c >= 48 && c <= 58)
@@ -227,74 +285,11 @@ int main(int argc, char** argv)
                 {
                     exit(0);
                 }
-
-
-                // Next frame number
-                digit1 = k / 10;
-                digit2 = k % 10;
-
-                // Resetting path
-                ss.str("");
             }
 
+            views.push_back(view_detail);
         }
     }
-
-
-//
-//    while (c != 'q' && g_image_index < g_num_images)
-//    {
-//        if (c == 0)
-//        {
-//            // Reading and showing the image
-//            Mat img = imread(g_paths[g_image_index]);
-//            if (img.data)
-//            {
-//                g_images.push_back(img);
-//                imshow(g_window_name, g_images[g_image_index]);
-//            }
-//            else
-//            {
-//                cerr << "Invalid images" << endl;
-//                return -1;
-//            }
-//        }
-//
-//        // Catching the character pressed
-//        c = waitKey(0);
-//
-//        if (c == 13)
-//        {
-//            // Enter is pressed: store the vector of keypoints
-//            if (!g_keypoints.empty())
-//            {
-//                vec_keypoints.push_back(g_keypoints);
-//                g_keypoints.clear();
-//            }
-//
-//            // Go to the next image
-//            g_image_index++;
-//            c = 0;
-//        }
-//        else if (c == 'z' && !g_keypoints.empty())
-//        {
-//            // Undo is pressed: undisplay the last keypoint selected
-//            imshow(g_window_name, g_previous_image);
-//            g_images[g_image_index] = g_previous_image.clone();
-//
-//            // Remove the last keypoint inserted
-//            KeyPoint key_removed = g_keypoints.back();
-//            g_keypoints.pop_back();
-//
-//            printf("Keypoint removed at (%f, %f).\n", key_removed.pt.x, key_removed.pt.y);
-//        }
-//    }
-//    cout << "done!" << endl;
-
-
-
-
-
 
     // Decriptors computation
 //    Ptr<DescriptorExtractor> descriptor_extractor = DescriptorExtractor::create("SIFT");

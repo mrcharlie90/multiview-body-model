@@ -65,6 +65,5 @@ namespace multiviewbodymodel
         float overall_confidence; // TODO: set default to 1
     };
 
-
 }
 #endif //HELLOWORLD_MULTIVIEWBODYMODEL_H
