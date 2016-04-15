@@ -35,6 +35,8 @@ namespace multiviewbodymodel
 
     private:
         std::vector<ViewDetail> views;
+
+
     };
 
 
@@ -57,7 +59,7 @@ namespace multiviewbodymodel
 
     struct ViewDetail
     {
-        std::string Name;
+        std::string name;
         float angle;
         std::vector<ConfidenceDescriptor> keypoints_descriptors;
         float overall_confidence; // TODO: set default to 1
