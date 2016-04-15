@@ -9,14 +9,7 @@ using namespace std;
 using namespace cv;
 using namespace multiviewbodymodel;
 
-void test_distances();
-
 int main()
-{
-    test_distances();
-}
-
-void test_distances()
 {
 // Body model 1
     float data1[4][3] = {1,0,1,2,0,1,4,3,2,6,2,1};
@@ -72,13 +65,23 @@ void test_distances()
     views_descriptors_conf2.push_back(c3);
     views_descriptors_conf2.push_back(c4);
 
+    vector<string> names;
+    names.push_back("l");
+    names.push_back("r");
+
     MultiviewBodyModel mbm1;
+    mbm1.set_views_names(names);
     mbm1.set_views_descriptors(views_descriptors1);
     mbm1.set_views_descriptors_confidences(views_descriptors_conf1);
 
     MultiviewBodyModel mbm2;
+    mbm2.set_views_names(names);
     mbm2.set_views_descriptors(views_descriptors2);
     mbm2.set_views_descriptors_confidences(views_descriptors_conf2);
+
+    // Testing change view: OK
+//    mbm2.ChangeViewDescriptors("l", D1, c1);
+//    mbm2.ChangeViewDescriptors("r", D2, c2);
 
     vector<float> distances = mbm1.Distance(mbm2);
 
@@ -89,4 +92,6 @@ void test_distances()
     cout << "]";
 
     // output: [0.944803, 1.46327]
+
+    return 0;
 }

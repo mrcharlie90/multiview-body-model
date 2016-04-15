@@ -24,7 +24,7 @@ namespace  multiviewbodymodel
 
         void ConfidenceNormalization();
         vector<float> Distance(MultiviewBodyModel body_model);
-        void ChangeViewDescriptors(int id, cv::Mat descriptors, vector<float> descriptors_confidences);
+        void ChangeViewDescriptors(string name, cv::Mat descriptors, vector<float> descriptors_confidences);
 
         void set_views_id(vector<int> views_id);
         vector<int> views_id();
@@ -38,6 +38,8 @@ namespace  multiviewbodymodel
         vector<float> views_angles();
 
     private:
+
+
         vector<int> views_id_; // TODO: useful?
         vector<string> views_names_;
         vector<float> views_angles_;

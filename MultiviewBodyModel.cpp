@@ -8,6 +8,10 @@ using namespace multiviewbodymodel;
 using namespace cv;
 using namespace std;
 
+MultiviewBodyModel::MultiviewBodyModel() {
+
+}
+
 /*
  *  Constructor: initialize the body model with the views' descriptors
  */
@@ -96,10 +100,19 @@ std::vector<float> MultiviewBodyModel::Distance(MultiviewBodyModel body_model) {
 /*
  * Change descriptors stored in a specific view.
  */
-void MultiviewBodyModel::ChangeViewDescriptors(int id, cv::Mat descriptors,
+void MultiviewBodyModel::ChangeViewDescriptors(string name, cv::Mat descriptors,
                                                vector<float> descriptors_confidences) {
-    views_descriptors_[id] = descriptors;
-    views_descriptors_confidences_[id] = descriptors_confidences;
+    long index = find(views_names_.begin(), views_names_.end(), name) - views_names_.begin();
+    cout << index << endl;
+
+    if (index >= views_names_.size())
+    {
+        cerr << "The view searched does not exists." << endl;
+        exit(-1);
+    }
+
+    views_descriptors_[index] = descriptors;
+    views_descriptors_confidences_[index] = descriptors_confidences;
 }
 
 /*
@@ -144,6 +157,10 @@ void MultiviewBodyModel::set_views_id(vector<int> views_id) {
 vector<int> MultiviewBodyModel::views_id() {
     return views_id_;
 }
+
+
+
+
 
 
 
