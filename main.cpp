@@ -16,10 +16,6 @@ int main()
 {
     MultiviewBodyModel mbm1, mbm2;
 
-    vector<int> ids;
-    vector<float> confidences;
-    Mat descriptors;
-
     // Testing distance
     mbm1.ReadAndCompute("../imgs/matteol_sync/c00000_skel.txt",
                         "../imgs/matteol_sync/c00000.png", 0, "SIFT", 7);
@@ -39,24 +35,6 @@ int main()
     }
     cout << "]" << endl;
 
-    // Printing
-    //    ids = mbm1.views_id();
-//    cout << "id = " << ids[0] << endl;
-//    cout << "pose = " << mbm1.pose_side(0) << endl;
-//
-//    descriptors = mbm1.views_descriptors(0);
-//    for (int j = 0; j < descriptors.rows; ++j) {
-//        cout << j << ": " << descriptors.row(j) << endl;
-//    }
-//
-//    confidences = mbm1.confidences(0);
-//    cout << "[" << confidences[0];
-//    for (int i = 1; i < confidences.size(); ++i) {
-//        cout << ", " << confidences[i];
-//    }
-//    cout << "]" << endl;
-
-//    test_distance(); // OK
     
 
     return 0;

@@ -5,8 +5,6 @@
 #include "MultiviewBodyModel.h"
 
 using namespace multiviewbodymodel;
-using namespace cv;
-using namespace std;
 
 MultiviewBodyModel::MultiviewBodyModel() {
 
@@ -20,19 +18,17 @@ MultiviewBodyModel::MultiviewBodyModel(vector<int> views_id, vector<int> pose_si
     views_descriptors_confidences_ = views_descriptors_confidences;
 }
 
-
 /*
- * Normalize the confidences set by the skeletal tracker
+ * Normalize the confidences set by the skeletal tracker.
  */
 void multiviewbodymodel::MultiviewBodyModel::ConfidenceNormalization() {
 
     // Checking views' size
     if (views_descriptors_confidences_.size() == 0) {
-        cerr << "No views acquired. Insert at least one view to call this procedure." << endl;
+        std::cerr << "No views acquired. Insert at least one view to call this procedure." << std::endl;
         return;
     }
 
-    // TODO: i valori non vengono cambiati
     // Confidence normalization
     for (int i = 0; i < views_descriptors_confidences_.size(); ++i) {
 
@@ -52,7 +48,8 @@ void multiviewbodymodel::MultiviewBodyModel::ConfidenceNormalization() {
 }
 
 /*
- * Compute the distance between the specified view of the body models
+ * Given the view id, compute the euclidean distance between
+ * two views of the body models.
  */
 float MultiviewBodyModel::Distance(MultiviewBodyModel body_model, int view_id) {
 
@@ -60,12 +57,9 @@ float MultiviewBodyModel::Distance(MultiviewBodyModel body_model, int view_id) {
     this->ConfidenceNormalization();
     body_model.ConfidenceNormalization();
 
-
-    vector<int>::iterator iter = find(views_id_.begin(), views_id_.end(), view_id);
-
     // Computing distances
-    Mat descriptors1 = views_descriptors_[view_id];
-    Mat descriptors2 = body_model.views_descriptors()[view_id];
+    cv::Mat descriptors1 = views_descriptors_[view_id];
+    cv::Mat descriptors2 = body_model.views_descriptors()[view_id];
 
     assert(descriptors1.rows == descriptors2.rows);
 
@@ -88,7 +82,6 @@ float MultiviewBodyModel::Distance(MultiviewBodyModel body_model, int view_id) {
  * Compute the distance between views of two body model
  */
 std::vector<float> MultiviewBodyModel::Distances(MultiviewBodyModel body_model) {
-
     this->ConfidenceNormalization();
     body_model.ConfidenceNormalization();
 
@@ -103,22 +96,98 @@ std::vector<float> MultiviewBodyModel::Distances(MultiviewBodyModel body_model) 
     return distances;
 }
 
-
 /*
- * Change descriptors stored in a specific view.
+ * Populate the body model given a file containing the 15 keypoints' position
+ * and the pose side. If one view is already saved, overwrite it.
  */
-void MultiviewBodyModel::ChangeViewDescriptors(int view_id, cv::Mat descriptors, vector<float> descriptors_confidences) {
-    long index = find(views_id_.begin(), views_id_.end(), view_id) - views_id_.begin();
-    cout << index << endl;
+void MultiviewBodyModel::ReadAndCompute(string path, string img_path, int view_id, string descriptor_extractor_type, float keypoint_size) {
+    // Ouput variables
+    vector<cv::KeyPoint> keypoints;
+    vector<float> confidences;
+    string line;
 
-    if (index >= views_id_.size())
+    int pose_side;
+    // Read the file
+    std::ifstream file(path);
+    int i = 0;
+    while (getline(file, line) && i < 15)
     {
-        cerr << "The view searched does not exists." << endl;
-        exit(-1);
+        // Current line
+        std::istringstream iss(line);
+
+        int value_type = 0; // 0:x-pos, 1:y-pos, 2:confidence
+        float x = 0.0f; // x-position
+        float y = 0.0f; // y-position
+
+        string field;
+        while (getline(iss, field, ',')) {
+            std::stringstream ss(field);
+            switch (value_type) {
+                case 0:
+                    // Catch the x-position
+                    ss >> x;
+                    ++value_type;
+                    break;
+                case 1:
+                    // Catch the y-position
+                    ss >> y;
+                    ++value_type;
+                    break;
+                case 2:
+                    // Save the keypoint...
+                    cv::KeyPoint keypoint(cv::Point2f(x, y), keypoint_size);
+                    keypoints.push_back(keypoint);
+
+                    // ...and the confidence
+                    float conf;
+                    ss >> conf;
+                    if (conf < 0)
+                        confidences.push_back(0);
+                    else
+                        confidences.push_back(conf);
+
+                    // Reset to 0 for the next keypoint
+                    value_type %= 2;
+                    break;
+                default:
+                    value_type %= 2;
+            }
+        }
+        ++i;
     }
 
-    views_descriptors_[index] = descriptors;
-    views_descriptors_confidences_[index] = descriptors_confidences;
+    // Last line will contain the pose side
+    std::stringstream ss(line);
+    ss >> pose_side;
+
+    // Read the image
+    cv::Mat img = cv::imread(img_path);
+    if (!img.data) {
+        std::cerr << "Invalid image file." << std::endl;
+        exit(0);
+    }
+
+    // Compute descriptors for this view
+    cv::Mat descriptors;
+    cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
+    descriptor_extractor->compute(img, keypoints, descriptors);
+
+    // Populate the body model with the results
+    vector<int>::iterator iter = find(views_id_.begin(), views_id_.end(), view_id);
+    if (iter == views_id_.end()) {
+        // The view is new, so add it to this model
+        views_id_.push_back(view_id);
+        pose_side_.push_back(pose_side);
+        views_descriptors_.push_back(descriptors);
+        views_descriptors_confidences_.push_back(confidences);
+    }
+    else {
+        // Replace the view previously acquired
+        long index = iter - views_id_.end() + 1; // index to the element to replace
+        pose_side_[index] = pose_side;
+        views_descriptors_[index] = descriptors;
+        views_descriptors_confidences_[index] = confidences;
+    }
 }
 
 /*
@@ -148,134 +217,4 @@ void MultiviewBodyModel::set_views_id(vector<int> views_id) {
 vector<int> MultiviewBodyModel::views_id() {
     return views_id_;
 }
-
-void MultiviewBodyModel::set_pose_side(int view_id, int pose_side) {
-    pose_side_[view_id] = pose_side;
-}
-
-int MultiviewBodyModel::pose_side(int view_id) {
-    return pose_side_[view_id];
-}
-
-void MultiviewBodyModel::ReadAndCompute(string path, string img_path, int view_id, string descriptor_extractor_type, float keypoint_size) {
-
-    ifstream file(path);
-
-    vector<KeyPoint> keypoints;
-    vector<float> confidences;
-
-    string line;
-    int pose_side;
-    int i = 0;
-    while (getline(file, line) && i < 15)
-    {
-        // Current line
-        istringstream iss(line);
-
-        // Distinguish between position and confidence
-        int value_type = 0;
-
-        float x, y;
-        string field;
-        while (getline(iss, field, ','))
-        {
-            stringstream ss(field);
-
-            switch (value_type) {
-                case 0:
-                    // Catch the x-position
-                    ss >> x;
-                    value_type++;
-                    break;
-                case 1:
-                    // Catch the y-position
-                    ss >> y;
-                    value_type++;
-                    break;
-                case 2:
-                    // Save the keypoint...
-                    KeyPoint keypoint(Point2f(x, y), keypoint_size);
-                    keypoints.push_back(keypoint);
-
-                    // ...and the confidence
-                    float conf;
-                    ss >> conf;
-                    if (conf < 0)
-                        confidences.push_back(0);
-                    else
-                        confidences.push_back(conf);
-
-                    // Reset to 0 for the next keypoint
-                    value_type %= 2;
-                    break;
-            }
-        }
-        i++;
-    }
-
-    // Last line will contain the pose side
-    stringstream ss(line);
-    ss >> pose_side;
-
-    // Printing results
-//    for (int i = 0; i < keypoints.size(); ++i) {
-//        printf("%d: [%.2f, %.2f] | %.2f\n",
-//               i, keypoints[i].pt.x, keypoints[i].pt.y, confidences[i]);
-//    }
-//
-//    cout << pose_side << endl;
-
-    // Read the image
-    Mat img = imread(img_path);
-    if (!img.data)
-    {
-        cerr << "Invalid image file." << endl;
-        exit(0);
-    }
-//
-//    Mat marked;
-//    drawKeypoints(img, keypoints, marked, Scalar(0, 0, 255));
-//
-//    namedWindow("Win");
-//    imshow("Win", marked);
-//    waitKey(0);
-
-    // Compute descriptors for this view
-    Mat descriptors;
-    Ptr<DescriptorExtractor> descriptor_extractor = DescriptorExtractor::create(descriptor_extractor_type);
-    descriptor_extractor->compute(img, keypoints, descriptors);
-
-    // Populate the body model with the results
-    vector<int>::iterator iter = find(views_id_.begin(), views_id_.end(), view_id);
-    if (iter == views_id_.end())
-    {
-        // The view is new, so add it to this model
-        views_id_.push_back(view_id);
-        pose_side_.push_back(pose_side);
-        views_descriptors_.push_back(descriptors);
-        views_descriptors_confidences_.push_back(confidences);
-    }
-    else
-    {
-        // Replace the view previously acquired
-        int index = iter - views_id_.end() + 1; // index to the element to replace
-        pose_side_[index] = pose_side;
-        views_descriptors_[index] = descriptors;
-        views_descriptors_confidences_[index] = confidences;
-    }
-
-}
-
-cv::Mat MultiviewBodyModel::views_descriptors(int view_id) {
-    return views_descriptors_[view_id];
-}
-
-vector<float> MultiviewBodyModel::confidences(int view_id) {
-    return views_descriptors_confidences_[view_id];
-}
-
-
-
-
-
 
