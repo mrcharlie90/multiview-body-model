@@ -14,20 +14,39 @@ void test_distance(); // OK
 
 int main()
 {
-    MultiviewBodyModel mbm1, mbm2;
+    MultiviewBodyModel mbm1, mbm2, mbm3, mbm4;
 
     // Testing distance
     mbm1.ReadAndCompute("../imgs/matteol_sync/c00000_skel.txt",
                         "../imgs/matteol_sync/c00000.png", 0, "SIFT", 7);
     mbm1.ReadAndCompute("../imgs/matteol_sync/l00000_skel.txt",
                         "../imgs/matteol_sync/l00000.png", 1, "SIFT", 7);
+    mbm1.ReadAndCompute("../imgs/matteol_sync/r00000_skel.txt",
+                        "../imgs/matteol_sync/r00000.png", 2, "SIFT", 7);
 
     mbm2.ReadAndCompute("../imgs/gianluca_sync/c00000_skel.txt",
                         "../imgs/gianluca_sync/c00000.png", 0, "SIFT", 7);
-    mbm2.ReadAndCompute("../imgs/gianluca_sync/c00000_skel.txt",
-                        "../imgs/gianluca_sync/c00000.png", 1, "SIFT", 7);
+    mbm2.ReadAndCompute("../imgs/gianluca_sync/l00000_skel.txt",
+                        "../imgs/gianluca_sync/l00000.png", 1, "SIFT", 7);
+    mbm2.ReadAndCompute("../imgs/gianluca_sync/r00000_skel.txt",
+                        "../imgs/gianluca_sync/r00000.png", 2, "SIFT", 7);
+    
+    mbm3.ReadAndCompute("../imgs/nicola_sync/c00000_skel.txt",
+                        "../imgs/nicola_sync/c00000.png", 0, "SIFT", 7);
+    mbm3.ReadAndCompute("../imgs/nicola_sync/l00000_skel.txt",
+                        "../imgs/nicola_sync/l00000.png", 1, "SIFT", 7);
+    mbm3.ReadAndCompute("../imgs/nicola_sync/r00000_skel.txt",
+                        "../imgs/nicola_sync/r00000.png", 2, "SIFT", 7);
+    
+    mbm4.ReadAndCompute("../imgs/nicola_sync/c00021_skel.txt",
+                        "../imgs/nicola_sync/c00021.png", 0, "SIFT", 7);
+    mbm4.ReadAndCompute("../imgs/nicola_sync/l00020_skel.txt",
+                        "../imgs/nicola_sync/l00020.png", 1, "SIFT", 7);
+    mbm4.ReadAndCompute("../imgs/nicola_sync/r00020_skel.txt",
+                        "../imgs/nicola_sync/r00020.png", 2, "SIFT", 7);
 
-    vector<float> distances = mbm1.Distances(mbm2);
+
+    vector<float> distances = mbm1.Distances(mbm1);
 
     cout << "[" << distances[0];
     for (int i = 1; i < distances.size(); ++i) {
@@ -35,8 +54,9 @@ int main()
     }
     cout << "]" << endl;
 
-    
+    vector<float> distances2 = mbm2.Distances(mbm1);
 
+    
     return 0;
 }
 

@@ -149,8 +149,6 @@ void MultiviewBodyModel::ReadAndCompute(string path, string img_path, int view_i
                     // Reset to 0 for the next keypoint
                     value_type %= 2;
                     break;
-                default:
-                    value_type %= 2;
             }
         }
         ++i;
