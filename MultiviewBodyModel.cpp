@@ -68,11 +68,17 @@ float MultiviewBodyModel::Distance(MultiviewBodyModel body_model, int view_id) {
 
     assert(confs1.size() == confs2.size());
 
+
     // Compute Euclidean Distance weighted with the confidence
     // of each keypoint descriptor
     float view_distance = 0.0f;
     for (int i = 0; i < descriptors1.rows; ++i) {
-        view_distance += confs1[i] * confs2[i] * norm(descriptors1.row(i), descriptors2.row(i));
+        Mat normalized_descriptor1;
+        normalize(descriptors1.row(i), normalized_descriptor1);
+        Mat normalized_descriptor2;
+        normalize(descriptors2.row(i), normalized_descriptor2);
+
+        view_distance += confs1[i] * confs2[i] * norm(normalized_descriptor1, normalized_descriptor2);
     }
 
     return view_distance;
@@ -101,17 +107,22 @@ std::vector<float> MultiviewBodyModel::Distances(MultiviewBodyModel body_model) 
  * and the pose side. If one view is already saved, overwrite it.
  */
 void MultiviewBodyModel::ReadAndCompute(string path, string img_path, int view_id, string descriptor_extractor_type, float keypoint_size) {
-    // Ouput variables
+    // Output variables
     vector<cv::KeyPoint> keypoints;
     vector<float> confidences;
-    string line;
 
     int pose_side;
-    // Read the file
+
+    // File reading
+    string line;
     std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Invalid file name." << std::endl;
+        exit(-1);
+    }
+
     int i = 0;
-    while (getline(file, line) && i < 15)
-    {
+    while (getline(file, line) && i < 15) {
         // Current line
         std::istringstream iss(line);
 
@@ -153,24 +164,27 @@ void MultiviewBodyModel::ReadAndCompute(string path, string img_path, int view_i
         }
         ++i;
     }
+    views_keypoints_.push_back(keypoints);
 
-    // Last line will contain the pose side
+    // Last line contains the pose side
     std::stringstream ss(line);
     ss >> pose_side;
 
-    // Read the image
+    // Read image
     cv::Mat img = cv::imread(img_path);
     if (!img.data) {
         std::cerr << "Invalid image file." << std::endl;
         exit(0);
     }
 
+    views_images_.push_back(img);
+
     // Compute descriptors for this view
     cv::Mat descriptors;
     cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
     descriptor_extractor->compute(img, keypoints, descriptors);
 
-    // Populate the body model with the results
+    // Populate the body model with the results and if a view already exists, replace it
     vector<int>::iterator iter = find(views_id_.begin(), views_id_.end(), view_id);
     if (iter == views_id_.end()) {
         // The view is new, so add it to this model
@@ -181,9 +195,9 @@ void MultiviewBodyModel::ReadAndCompute(string path, string img_path, int view_i
     }
     else {
         // Replace the view previously acquired
-        long index = iter - views_id_.end() + 1; // index to the element to replace
+        long index = iter - views_id_.begin(); // index to the element to replace
         pose_side_[index] = pose_side;
-        views_descriptors_[index] = descriptors;
+        views_descriptors_.at(index) = descriptors;
         views_descriptors_confidences_[index] = confidences;
     }
 }
@@ -215,4 +229,60 @@ void MultiviewBodyModel::set_views_id(vector<int> views_id) {
 vector<int> MultiviewBodyModel::views_id() {
     return views_id_;
 }
+
+void MultiviewBodyModel::set_view_descriptors(int view_id, Mat descriptors) {
+    views_descriptors_[view_id] = descriptors;
+}
+
+cv::Mat MultiviewBodyModel::view_descriptors(int view_id) {
+    return views_descriptors_[view_id];
+}
+
+int MultiviewBodyModel::pose_side(int view_id) {
+    return pose_side_[view_id];
+}
+
+vector<Mat> MultiviewBodyModel::ImagesByPoseSide(int pose_side) {
+    vector<Mat> imgs;
+    for (int i = 0; i < views_images_.size(); ++i) {
+        if (pose_side_[i] == pose_side)
+            imgs.push_back(views_images_[i]);
+    }
+
+    return imgs;
+}
+
+vector<Mat> MultiviewBodyModel::DescriptorsByPoseSide(int pose_side) {
+    vector<Mat> descriptors;
+    for (int i = 0; i < views_descriptors_.size(); ++i) {
+        if (pose_side_[i] == pose_side) {
+            descriptors.push_back(views_descriptors_[i]);
+        }
+    }
+
+    return descriptors;
+}
+
+vector<vector<KeyPoint> > MultiviewBodyModel::KeypointsByPoseSide(int pose_side) {
+    vector<vector<KeyPoint> > keypoints;
+    for (int i = 0; i < views_keypoints_.size(); ++i) {
+        if (pose_side_[i] == pose_side) {
+            keypoints.push_back(views_keypoints_[i]);
+        }
+    }
+
+    return keypoints;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 

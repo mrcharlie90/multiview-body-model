@@ -1,146 +1,108 @@
 //
-// Created by Mauro on 15/04/16.
+// Created by Mauro on 10/05/16.
 //
 
-#include <iostream>
-#include <fstream>
 #include "MultiviewBodyModel.h"
 
-using namespace std;
-using namespace cv;
 using namespace multiviewbodymodel;
-
-void test_distance(); // OK
+using namespace std;
+void read_skel(string skel_path, string img_path, int keypoint_size, string descriptor_extractor_type,
+               Mat &out_image, vector<KeyPoint> &out_keypoints, Mat &out_descriptors, int &pose_side);
 
 int main()
 {
-    MultiviewBodyModel mbm1, mbm2, mbm3, mbm4;
+    Mat query_skel_path;
+    Mat query_image_path;
+    Mat query_image;
 
-    // Testing distance
-    mbm1.ReadAndCompute("../imgs/matteol_sync/c00000_skel.txt",
-                        "../imgs/matteol_sync/c00000.png", 0, "SIFT", 7);
-    mbm1.ReadAndCompute("../imgs/matteol_sync/l00000_skel.txt",
-                        "../imgs/matteol_sync/l00000.png", 1, "SIFT", 7);
-    mbm1.ReadAndCompute("../imgs/matteol_sync/r00000_skel.txt",
-                        "../imgs/matteol_sync/r00000.png", 2, "SIFT", 7);
+    string DT = "SIFT";
+    vector<KeyPoint> query_keypoints;
+    Mat query_descriptors;
+    int query_pose_side;
+    int keypoint_size = 9;
 
-    mbm2.ReadAndCompute("../imgs/gianluca_sync/c00000_skel.txt",
-                        "../imgs/gianluca_sync/c00000.png", 0, "SIFT", 7);
-    mbm2.ReadAndCompute("../imgs/gianluca_sync/l00000_skel.txt",
-                        "../imgs/gianluca_sync/l00000.png", 1, "SIFT", 7);
-    mbm2.ReadAndCompute("../imgs/gianluca_sync/r00000_skel.txt",
-                        "../imgs/gianluca_sync/r00000.png", 2, "SIFT", 7);
-    
-    mbm3.ReadAndCompute("../imgs/nicola_sync/c00000_skel.txt",
-                        "../imgs/nicola_sync/c00000.png", 0, "SIFT", 7);
-    mbm3.ReadAndCompute("../imgs/nicola_sync/l00000_skel.txt",
-                        "../imgs/nicola_sync/l00000.png", 1, "SIFT", 7);
-    mbm3.ReadAndCompute("../imgs/nicola_sync/r00000_skel.txt",
-                        "../imgs/nicola_sync/r00000.png", 2, "SIFT", 7);
-    
-    mbm4.ReadAndCompute("../imgs/nicola_sync/c00021_skel.txt",
-                        "../imgs/nicola_sync/c00021.png", 0, "SIFT", 7);
-    mbm4.ReadAndCompute("../imgs/nicola_sync/l00020_skel.txt",
-                        "../imgs/nicola_sync/l00020.png", 1, "SIFT", 7);
-    mbm4.ReadAndCompute("../imgs/nicola_sync/r00020_skel.txt",
-                        "../imgs/nicola_sync/r00020.png", 2, "SIFT", 7);
+    read_skel("../ds/gianluca_sync/c00000_skel.txt", "../ds/gianluca_sync/c00000.png",
+              keypoint_size, DT, query_image, query_keypoints, query_descriptors, query_pose_side);
 
-
-    vector<float> distances = mbm1.Distances(mbm1);
-
-    cout << "[" << distances[0];
-    for (int i = 1; i < distances.size(); ++i) {
-        cout << ", " << distances[i];
+    if (query_image.data)
+    {
+        Mat img;
+        drawKeypoints(query_image, query_keypoints, img);
+        namedWindow("ciao");
+        imshow("ciao", img);
+        waitKey(0);
+        cout << query_descriptors << endl;
+        cout << query_pose_side << endl;
     }
-    cout << "]" << endl;
+    else
+        cerr << "Fail reaing the image" << endl;
 
-    vector<float> distances2 = mbm2.Distances(mbm1);
 
-    
+
+
+
     return 0;
 }
 
-void test_distance()
-{
-    // Body model 1
-    float data1[4][3] = {1,0,1,2,0,1,4,3,2,6,2,1};
-    float data2[4][3] = {0,0,1,7,4,0,2,0,1,1,0,0};
+void read_skel(string skel_path, string img_path, int keypoint_size, string descriptor_extractor_type,
+               Mat &out_image, vector<KeyPoint> &out_keypoints, Mat &out_descriptors, int &pose_side) {
 
-    Mat D1(4, 3, CV_32F, data1);
-    Mat D2(4, 3, CV_32F, data2);
-
-    vector<Mat> views_descriptors1;
-    views_descriptors1.push_back(D1);
-    views_descriptors1.push_back(D2);
-
-    vector<float> c1;
-    c1.push_back(0.1);
-    c1.push_back(0.2);
-    c1.push_back(0.3);
-    c1.push_back(0.4);
-
-    vector<float> c2;
-    c2.push_back(0.4);
-    c2.push_back(0.2);
-    c2.push_back(0.1);
-    c2.push_back(0.3);
-
-    vector<vector<float> > views_descriptors_conf1;
-    views_descriptors_conf1.push_back(c1);
-    views_descriptors_conf1.push_back(c2);
-
-    // Body model 2
-    float data3[4][3] = {0,0,1,4,0,1,0,2,2,3,0,1};
-    float data4[4][3] = {1,1,1,2,3,0,0,4,1,7,0,0};
-
-    Mat D3(4, 3, CV_32F, data3);
-    Mat D4(4, 3, CV_32F, data4);
-
-    vector<Mat> views_descriptors2;
-    views_descriptors2.push_back(D3);
-    views_descriptors2.push_back(D4);
-
-    vector<float> c3;
-    c3.push_back(0.2);
-    c3.push_back(0.2);
-    c3.push_back(0.1);
-    c3.push_back(0.5);
-
-    vector<float> c4;
-    c4.push_back(0.1);
-    c4.push_back(0.1);
-    c4.push_back(0.1);
-    c4.push_back(0.7);
-
-    vector<vector<float> > views_descriptors_conf2;
-    views_descriptors_conf2.push_back(c3);
-    views_descriptors_conf2.push_back(c4);
-
-    vector<int> ids;
-    ids.push_back(1);
-    ids.push_back(2);
-
-    MultiviewBodyModel mbm1;
-    mbm1.set_views_id(ids);
-    mbm1.set_views_descriptors(views_descriptors1);
-    mbm1.set_views_descriptors_confidences(views_descriptors_conf1);
-
-    MultiviewBodyModel mbm2;
-    mbm2.set_views_id(ids);
-    mbm2.set_views_descriptors(views_descriptors2);
-    mbm2.set_views_descriptors_confidences(views_descriptors_conf2);
-
-    // Testing change view: OK
-//    mbm2.ChangeViewDescriptors(1, D1, c1);
-//    mbm2.ChangeViewDescriptors(2, D2, c2);
-
-    vector<float> distances = mbm1.Distances(mbm2);
-
-    cout << "[" << distances[0];
-    for (int i = 1; i < distances.size(); ++i) {
-        cout << ", " << distances[i];
+    // Read the file
+    string line;
+    std::ifstream file(skel_path);
+    if (!file.is_open()) {
+        std::cerr << "Invalid file name." << std::endl;
+        exit(-1);
     }
-    cout << "]";
 
-    // output: [0.944803, 1.46327]
+    int i = 0;
+    while (getline(file, line) && i < 15) {
+        // Current line
+        std::istringstream iss(line);
+
+        int value_type = 0; // 0:x-pos, 1:y-pos, 2:confidence
+        float x = 0.0f; // x-position
+        float y = 0.0f; // y-position
+
+        string field;
+        while (getline(iss, field, ',')) {
+            std::stringstream ss(field);
+            switch (value_type) {
+                case 0:
+                    // Catch the x-position
+                    ss >> x;
+                    ++value_type;
+                    break;
+                case 1:
+                    // Catch the y-position
+                    ss >> y;
+                    ++value_type;
+                    break;
+                case 2:
+                    // Save the keypoint...
+                    cv::KeyPoint keypoint(cv::Point2f(x, y), keypoint_size);
+                    out_keypoints.push_back(keypoint);
+
+                    // Reset to 0 for the next keypoint
+                    value_type %= 2;
+                    break;
+            }
+        }
+        ++i;
+    }
+
+    // Last line contains the pose side
+    std::stringstream ss(line);
+    ss >> pose_side;
+
+    // Read image
+    out_image = cv::imread(img_path);
+    if (!out_image.data) {
+        std::cerr << "Invalid image file." << std::endl;
+
+    }
+
+    // Compute descriptors for this view
+    cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
+    descriptor_extractor->compute(out_image, out_keypoints, out_descriptors);
 }
