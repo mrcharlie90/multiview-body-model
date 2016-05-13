@@ -6,47 +6,52 @@
 
 using namespace multiviewbodymodel;
 using namespace std;
-void read_skel(string skel_path, string img_path, int keypoint_size, string descriptor_extractor_type,
+
+void read_skel(string skel_path, string img_path, string descriptor_extractor_type, int keypoint_size,
                Mat &out_image, vector<KeyPoint> &out_keypoints, Mat &out_descriptors, int &pose_side);
 
 int main()
 {
-    Mat query_skel_path;
-    Mat query_image_path;
-    Mat query_image;
+    // Paths
+    const int n_people = 3; // number of people
+    string str_paths[n_people] = {"../ds/gianluca_sync/", "../ds/marco_sync/", "../ds/matteol_sync/"};
+    int n_images[n_people] = {74, 84, 68};
+    const int n_views = 3;
+    string str_views[n_views] = {"c", "r", "l"};
 
-    string DT = "SIFT";
-    vector<KeyPoint> query_keypoints;
-    Mat query_descriptors;
-    int query_pose_side;
-    int keypoint_size = 9;
 
-    read_skel("../ds/gianluca_sync/c00000_skel.txt", "../ds/gianluca_sync/c00000.png",
-              keypoint_size, DT, query_image, query_keypoints, query_descriptors, query_pose_side);
 
-    if (query_image.data)
+    string imgs[5] = {
+            "../ds/gianluca_sync/c00000.png",
+            "../ds/gianluca_sync/c00009.png",
+            "../ds/gianluca_sync/c00017.png",
+            "../ds/gianluca_sync/c00047.png",
+            "../ds/gianluca_sync/c00063.png"
+    };
+
+    string skels[5] = {
+            "../ds/gianluca_sync/c00000_skel.txt", // 2
+            "../ds/gianluca_sync/c00009_skel.txt", // 1
+            "../ds/gianluca_sync/c00017_skel.txt", // 4
+            "../ds/gianluca_sync/c00047_skel.txt", // 4
+            "../ds/gianluca_sync/c00063_skel.txt" //
+    };
+
+    MultiviewBodyModel mbm1(4);
+
+    int i = 0;
+    while(!mbm1.ready() && i < 5)
     {
-        Mat img;
-        drawKeypoints(query_image, query_keypoints, img);
-        namedWindow("ciao");
-        imshow("ciao", img);
-        waitKey(0);
-        cout << query_descriptors << endl;
-        cout << query_pose_side << endl;
+        cout << mbm1.ReadAndCompute(skels[i], imgs[i], "SIFT", 9) << endl;
+        i++;
     }
-    else
-        cerr << "Fail reaing the image" << endl;
 
-
-
-
-
+    cout << mbm1.views_descriptors().size() << endl;
     return 0;
 }
 
-void read_skel(string skel_path, string img_path, int keypoint_size, string descriptor_extractor_type,
-               Mat &out_image, vector<KeyPoint> &out_keypoints, Mat &out_descriptors, int &pose_side) {
-
+void read_skel(string skel_path, string img_path, string descriptor_extractor_type, int keypoint_size,
+               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> confidences, Mat &out_descriptors, int &pose_side) {
     // Read the file
     string line;
     std::ifstream file(skel_path);
@@ -83,7 +88,15 @@ void read_skel(string skel_path, string img_path, int keypoint_size, string desc
                     cv::KeyPoint keypoint(cv::Point2f(x, y), keypoint_size);
                     out_keypoints.push_back(keypoint);
 
-                    // Reset to 0 for the next keypoint
+                    // ...and the confidence
+                    float conf;
+                    ss >> conf;
+                    if (conf < 0)
+                        confidences.push_back(0);
+                    else
+                        confidences.push_back(conf);
+
+                    // Reset to 0 and go to the next keypoint
                     value_type %= 2;
                     break;
             }
