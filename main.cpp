@@ -8,7 +8,7 @@ using namespace multiviewbodymodel;
 using namespace std;
 
 void read_skel(string skel_path, string img_path, string descriptor_extractor_type, int keypoint_size,
-               Mat &out_image, vector<KeyPoint> &out_keypoints, Mat &out_descriptors, int &pose_side);
+               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &confidences, Mat &out_descriptors, int &pose_side);
 
 int main()
 {
@@ -34,24 +34,32 @@ int main()
             "../ds/gianluca_sync/c00009_skel.txt", // 1
             "../ds/gianluca_sync/c00017_skel.txt", // 4
             "../ds/gianluca_sync/c00047_skel.txt", // 4
-            "../ds/gianluca_sync/c00063_skel.txt" //
+            "../ds/gianluca_sync/c00063_skel.txt" // 3
     };
 
     MultiviewBodyModel mbm1(4);
 
     int i = 0;
-    while(!mbm1.ready() && i < 5)
-    {
-        cout << mbm1.ReadAndCompute(skels[i], imgs[i], "SIFT", 9) << endl;
+    while(!mbm1.ready() && i < 5) {
+        mbm1.ReadAndCompute(skels[i], imgs[i], "SIFT", 9);
         i++;
     }
 
-    cout << mbm1.views_descriptors().size() << endl;
+    Mat out_image;
+    vector<KeyPoint> out_keypoints;
+    vector<float> out_confidences;
+    Mat out_descriptors;
+    int out_pose_side;
+    read_skel("../ds/gianluca_sync/c00070_skel.txt", "../ds/gianluca_sync/c00070.png", "SIFT", 9, out_image, out_keypoints,
+              out_confidences, out_descriptors, out_pose_side);
+
+    mbm1.match(out_descriptors, out_confidences, out_pose_side, "BruteForce");
+
     return 0;
 }
 
 void read_skel(string skel_path, string img_path, string descriptor_extractor_type, int keypoint_size,
-               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> confidences, Mat &out_descriptors, int &pose_side) {
+               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &confidences, Mat &out_descriptors, int &pose_side) {
     // Read the file
     string line;
     std::ifstream file(skel_path);
@@ -112,7 +120,6 @@ void read_skel(string skel_path, string img_path, string descriptor_extractor_ty
     out_image = cv::imread(img_path);
     if (!out_image.data) {
         std::cerr << "Invalid image file." << std::endl;
-
     }
 
     // Compute descriptors for this view
