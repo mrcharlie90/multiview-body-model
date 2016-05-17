@@ -8,6 +8,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <queue>
 #include <numeric>
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
@@ -28,7 +29,7 @@ namespace  multiviewbodymodel
 //        vector<float> Distances(MultiviewBodyModel body_model);
 //        float Distance(MultiviewBodyModel body_model, int view_id);
         bool ReadAndCompute(string file_path, string img_path, string descriptor_extractor_type, int keypoint_size);
-        float match(Mat query_descritptors, vector<float> confidences, int pose_side, bool occlusion_search=true);
+        float match(Mat query_descritptors, vector<float> query_confidences, int query_pose_side, bool occlusion_search=true);
         bool ready();
 
         vector<Mat> views_descriptors();

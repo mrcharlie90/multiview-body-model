@@ -8,58 +8,139 @@ using namespace multiviewbodymodel;
 using namespace std;
 
 void read_skel(string skel_path, string img_path, string descriptor_extractor_type, int keypoint_size,
-               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &confidences, Mat &out_descriptors, int &pose_side);
+               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &confidences, Mat &out_descriptors,
+               int &pose_side);
+
+void load_train_paths(string main_path, vector<string> persons_names, vector<string> views_names,
+                      vector<int> num_images,
+                      vector<vector<string> > &imgs_paths, vector<vector<string> > &skel_paths);
+
+bool load_models(vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
+                 vector<MultiviewBodyModel> &models);
+
+void load_query_paths(vector<vector<string>> &train_skels_paths, vector<vector<string>> &train_imgs_paths,
+                      vector<string> &query_skels_paths, vector<string> &query_imgs_paths);
 
 int main()
 {
-    // Paths
-    const int n_people = 3; // number of people
-    string str_paths[n_people] = {"../ds/gianluca_sync/", "../ds/marco_sync/", "../ds/matteol_sync/"};
-    int n_images[n_people] = {74, 84, 68};
-    const int n_views = 3;
-    string str_views[n_views] = {"c", "r", "l"};
+
+    vector<string> persons_names;
+    persons_names.push_back("gianluca_sync");
+    persons_names.push_back("marco_sync");
+    persons_names.push_back("matteol_sync");
+
+    vector<string> views_names;
+    views_names.push_back("c");
+    views_names.push_back("l");
+    views_names.push_back("r");
+
+    vector<int> num_images;
+    num_images.push_back(74);
+    num_images.push_back(84);
+    num_images.push_back(68);
+
+    string main_path = "../ds/";
+
+    vector<vector<string> > train_imgs_paths;
+    vector<vector<string> > train_skels_paths;
+
+    load_train_paths(main_path, persons_names, views_names, num_images, train_imgs_paths, train_skels_paths);
+
+    vector<string> query_imgs_paths;
+    vector<string> query_skels_paths;
+
+    load_query_paths(train_skels_paths, train_imgs_paths, query_skels_paths, query_imgs_paths);
+
+    assert(query_imgs_paths.size() == query_skels_paths.size());
 
 
+    vector<MultiviewBodyModel> models;
+    while(load_models(train_imgs_paths, train_skels_paths, models)) {
+        for (int i = 0; i < query_imgs_paths.size(); ++i) {
+            // Load query image
+            Mat query_image;
+            vector<KeyPoint> query_keypoints;
+            vector<float> query_confidences;
+            Mat query_descriptors;
+            int query_pose_side;
+            read_skel(query_skels_paths[i], query_imgs_paths[i], "BruteForce", 3,
+                      query_image, query_keypoints, query_confidences, query_descriptors, query_pose_side);
 
-    string imgs[5] = {
-            "../ds/gianluca_sync/c00000.png",
-            "../ds/gianluca_sync/c00009.png",
-            "../ds/gianluca_sync/c00017.png",
-            "../ds/gianluca_sync/c00047.png",
-            "../ds/gianluca_sync/c00063.png"
-    };
+            priority_queue<float> scores;
 
-    string skels[5] = {
-            "../ds/gianluca_sync/c00000_skel.txt", // 2
-            "../ds/gianluca_sync/c00009_skel.txt", // 1
-            "../ds/gianluca_sync/c00017_skel.txt", // 4
-            "../ds/gianluca_sync/c00047_skel.txt", // 4
-            "../ds/gianluca_sync/c00063_skel.txt" // 3
-    };
-
-    MultiviewBodyModel mbm1(4);
-
-    int i = 0;
-    while(!mbm1.ready() && i < 5) {
-        mbm1.ReadAndCompute(skels[i], imgs[i], "SIFT", 9);
-        i++;
+            for (int k = 0; k < models.size(); ++k) {
+                float score = models[k].match(query_descriptors, query_confidences, query_pose_side);
+                scores.push(score);
+            }
+        }
     }
 
-    Mat out_image;
-    vector<KeyPoint> out_keypoints;
-    vector<float> out_confidences;
-    Mat out_descriptors;
-    int out_pose_side;
-    read_skel("../ds/gianluca_sync/c00070_skel.txt", "../ds/gianluca_sync/c00070.png", "SIFT", 9, out_image, out_keypoints,
-              out_confidences, out_descriptors, out_pose_side);
-
-    mbm1.match(out_descriptors, out_confidences, out_pose_side, "BruteForce");
 
     return 0;
 }
 
+void load_query_paths(vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
+                      vector<string> &query_skels_paths, vector<string> &query_imgs_paths) {
+
+    assert(train_imgs_paths.size() == train_skels_paths.size());
+
+    for (int i = 0; i < train_imgs_paths.size(); ++i) {
+        for (int j = 0; j < train_imgs_paths[i].size(); ++j) {
+            query_imgs_paths.push_back(train_skels_paths[i][j]);
+            query_skels_paths.push_back((train_imgs_paths[i][j]));
+        }
+    }
+}
+
+bool load_models(vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
+                 vector<MultiviewBodyModel> &models) {
+
+    // TODO:
+
+    for (int i = 0; i < train_skels_paths.size(); ++i) {
+
+    }
+}
+
+
+void load_train_paths(string main_path, vector<string> persons_names, vector<string> views_names,
+                      vector<int> num_images,
+                      vector<vector<string> > &imgs_paths, vector<vector<string> > &skels_paths) {
+
+    assert(persons_names.size() == num_images.size());
+
+    stringstream ss_imgs, ss_skels;
+
+    for (int i = 0; i < persons_names.size(); ++i) {
+        for (int j = 0; j < views_names.size(); ++j) {
+            vector<string> imgs_path;
+            vector<string> skels_path;
+            for (int k = 0; k <= num_images[i]; ++k) {
+                if (k < 10) {
+                    ss_imgs << main_path << persons_names[i] << "/" << views_names[j] << "0000" << k << ".png";
+                    ss_skels << main_path << persons_names[i] << "/" << views_names[j] << "0000" << k << "_skel.txt";
+                }
+                else {
+                    ss_imgs << main_path << persons_names[i] << "/" << views_names[j] << "000" << k << ".png";
+                    ss_skels << main_path << persons_names[i] << "/" << views_names[j] << "000" << k << "_skel.txt";
+                }
+
+                imgs_path.push_back(ss_imgs.str());
+                skels_path.push_back(ss_skels.str());
+
+                ss_imgs.str("");
+                ss_skels.str("");
+            }
+
+            imgs_paths.push_back(imgs_path);
+            skels_paths.push_back(skels_path);
+        }
+    }
+}
+
 void read_skel(string skel_path, string img_path, string descriptor_extractor_type, int keypoint_size,
-               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &confidences, Mat &out_descriptors, int &pose_side) {
+               Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &confidences, Mat &out_descriptors,
+               int &pose_side) {
     // Read the file
     string line;
     std::ifstream file(skel_path);

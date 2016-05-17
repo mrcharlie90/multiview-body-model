@@ -199,10 +199,10 @@ bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string des
 }
 
 
-float MultiviewBodyModel::match(Mat query_descritptors, vector<float> confidences, int pose_side, bool occlusion_search)
+float MultiviewBodyModel::match(Mat query_descritptors, vector<float> query_confidences, int query_pose_side, bool occlusion_search)
 {
     assert(!pose_side_.empty() && pose_side_.size() == max_poses_);
-    assert(confidences.size() == query_descritptors.rows);
+    assert(query_confidences.size() == query_descritptors.rows);
 
     // Mask creation
 //    Mat  mask(static_cast<int>(confidences.size()), 1, CV_8U);
@@ -218,12 +218,12 @@ float MultiviewBodyModel::match(Mat query_descritptors, vector<float> confidence
 
 
     for (int i = 0; i < pose_side_.size(); ++i) {
-        if (pose_side_[i] == pose_side) {
+        if (pose_side_[i] == query_pose_side) {
             vector<char> confidence_mask;
-            create_confidence_mask(confidences, views_descriptors_confidences_[i], confidence_mask);
+            create_confidence_mask(query_confidences, views_descriptors_confidences_[i], confidence_mask);
 
             for (int j = 0; j < confidence_mask.size(); ++j) {
-                std::cout << confidence_mask[j] << std::endl;
+                std::cout << (int)confidence_mask[j] << std::endl;
             }
 
             float average_distance = 0.0;
