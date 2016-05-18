@@ -60,11 +60,6 @@ namespace  multiviewbodymodel
         // Confidence value for each keypoint of each view. A value between 0 and 1
         // (temporary 1: keypoint visible, 0: keypoint is occluded))
         vector<vector<float> > views_descriptors_confidences_;
-
-        string descriptor_extractor_type_;
-
-        int keypoint_size_;
-
     };
 }
 #endif //MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H

@@ -162,7 +162,6 @@ bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string des
         }
         ++i;
     }
-    keypoint_size_ = keypoint_size;
     views_keypoints_.push_back(keypoints);
 
     // Last line contains the pose side
@@ -186,7 +185,6 @@ bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string des
         cv::Mat descriptors;
         cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
         descriptor_extractor->compute(img, keypoints, descriptors);
-        descriptor_extractor_type_ = descriptor_extractor_type;
 
         pose_side_.push_back(pose_side);
         views_descriptors_.push_back(descriptors);
@@ -198,40 +196,33 @@ bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string des
     return false;
 }
 
-
-float MultiviewBodyModel::match(Mat query_descritptors, vector<float> query_confidences, int query_pose_side, bool occlusion_search)
+/**
+ * Computes the match between this model poses and the query pose.
+ * Confidences and pose side must be given.
+ */
+float MultiviewBodyModel::match(Mat query_descritptors, vector<float> query_confidences,
+                                int query_pose_side, bool occlusion_search)
 {
-    assert(!pose_side_.empty() && pose_side_.size() == max_poses_);
+    // Checking the model is ready
+    assert(this->ready());
     assert(query_confidences.size() == query_descritptors.rows);
-
-    // Mask creation
-//    Mat  mask(static_cast<int>(confidences.size()), 1, CV_8U);
-//    for (int k = 0; k < confidences.size(); ++k) {
-//        if (confidences[k] > 0) {
-//            mask.at<char>(k, 1) = 1;
-//        }
-//        else
-//            mask.at<char>(k, 1) = 0;
-//    }
-//
-//    std::cout << mask << std::endl;
-
 
     for (int i = 0; i < pose_side_.size(); ++i) {
         if (pose_side_[i] == query_pose_side) {
+            // The query pose is found: do the match consindering the keypoint occlusion
+            // (by using confidences)
             vector<char> confidence_mask;
+
+            // Create a mask from confidences values telling the operation to do between occluded keypoints
             create_confidence_mask(query_confidences, views_descriptors_confidences_[i], confidence_mask);
 
-            for (int j = 0; j < confidence_mask.size(); ++j) {
-                std::cout << (int)confidence_mask[j] << std::endl;
-            }
-
+            // Compute the average distance from the euclidean distances computed among each keypoint
             float average_distance = 0.0;
             int descriptors_count = 0;
             for (int k = 0; k < views_descriptors_[i].rows; ++k) {
                 char value = confidence_mask[k];
 
-                // If the occlusion_search is true, look
+                // If the occlusion_search flag is true, look
                 Mat descriptor_occluded;
                 double dist;
                 if(value == 1 && occlusion_search) {
@@ -239,19 +230,19 @@ float MultiviewBodyModel::match(Mat query_descritptors, vector<float> query_conf
                         // A descriptor is found, so compute the distance
                         dist = norm(query_descritptors.row(k), descriptor_occluded);
 
-                        std::cout << k << ":" << dist << " " << std::endl;
+//                        std::cout << k << ":" << dist << " " << std::endl;
                         average_distance += dist;
                         descriptors_count++;
                     }
                 }
                 else if (value == 2) {
                     dist = norm(query_descritptors.row(k), views_descriptors_[i].row(k));
-                    std::cout << k << ":" << dist << std::endl;
+//                    std::cout << k << ":" << dist << std::endl;
                     average_distance += dist;
                     descriptors_count++;
                 }
             }
-            cout << average_distance / descriptors_count << endl;
+//            cout << average_distance / descriptors_count << endl;
             return average_distance / descriptors_count;
         }
     }
@@ -311,7 +302,7 @@ bool MultiviewBodyModel::get_descriptor_occluded(int keypoint_index, Mat &descri
     // Find a non-occluded descriptor in one pose
     for (int i = 0; i < views_descriptors_.size(); ++i) {
         if (views_descriptors_confidences_[i][keypoint_index] > 0) {
-            std::cout << "descriptor k = " << keypoint_index << " found at view = " << i << std::endl;
+//            std::cout << "descriptor k = " << keypoint_index << " found at view = " << i << std::endl;
             descriptor_occluded = views_descriptors_[i].row(keypoint_index);
             return true;
         }
