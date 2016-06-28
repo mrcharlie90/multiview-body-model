@@ -29,7 +29,7 @@ namespace  multiviewbodymodel
 //        vector<float> Distances(MultiviewBodyModel body_model);
 //        float Distance(MultiviewBodyModel body_model, int view_id);
         bool ReadAndCompute(string file_path, string img_path, string descriptor_extractor_type, int keypoint_size);
-        float match(Mat query_descritptors, vector<float> query_confidences, int query_pose_side, bool occlusion_search=true);
+        float match(Mat query_descriptors, vector<float> query_confidences, int query_pose_side, bool occlusion_search=true);
         bool ready();
 
         vector<Mat> views_descriptors();
@@ -49,7 +49,7 @@ namespace  multiviewbodymodel
         // Pose number (i.e. 1:front, 2:back, 3:left-side, 4:right-side )
         vector<int> pose_side_;
 
-        // Contains descriptors relative to keypoint selected in each view
+        // Contains the keypoint's descriptors of each view
         vector<cv::Mat> views_descriptors_;
 
         // Vector containing all keypoints for each image

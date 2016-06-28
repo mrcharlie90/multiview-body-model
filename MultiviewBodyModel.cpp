@@ -198,46 +198,44 @@ bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string des
 
 /**
  * Computes the match between this model poses and the query pose.
- * Confidences and pose side must be given.
+ * Confidences and the pose index side must be given.
  */
-float MultiviewBodyModel::match(Mat query_descritptors, vector<float> query_confidences,
+float MultiviewBodyModel::match(Mat query_descriptors, vector<float> query_confidences,
                                 int query_pose_side, bool occlusion_search)
 {
     // Checking the model is ready
     assert(this->ready());
-    assert(query_confidences.size() == query_descritptors.rows);
+    assert(query_confidences.size() == query_descriptors.rows);
 
+    // Search for the corresponding pose side
     for (int i = 0; i < pose_side_.size(); ++i) {
         if (pose_side_[i] == query_pose_side) {
-            // The query pose is found: do the match consindering the keypoint occlusion
-            // (by using confidences)
+            // Do the match consindering the keypoint occlusion (by using confidences)
             vector<char> confidence_mask;
 
-            // Create a mask from confidences values telling the operation to do between occluded keypoints
+            // Mask used for defining the operation between two keypoints occluded or semi-occluded.
             create_confidence_mask(query_confidences, views_descriptors_confidences_[i], confidence_mask);
 
-            // Compute the average distance from the euclidean distances computed among each keypoint
+            // Compute the average of the euclidean distances obtained from each keypoint
             float average_distance = 0.0;
             int descriptors_count = 0;
             for (int k = 0; k < views_descriptors_[i].rows; ++k) {
-                char value = confidence_mask[k];
+                char operation = confidence_mask[k];
 
                 // If the occlusion_search flag is true, look
                 Mat descriptor_occluded;
                 double dist;
-                if(value == 1 && occlusion_search) {
+                if(operation == 1 && occlusion_search) {
+                    // TODO: obsolete if
                     if (get_descriptor_occluded(k, descriptor_occluded)) {
                         // A descriptor is found, so compute the distance
-                        dist = norm(query_descritptors.row(k), descriptor_occluded);
-
-//                        std::cout << k << ":" << dist << " " << std::endl;
+                        dist = norm(query_descriptors.row(k), descriptor_occluded);
                         average_distance += dist;
                         descriptors_count++;
                     }
                 }
-                else if (value == 2) {
-                    dist = norm(query_descritptors.row(k), views_descriptors_[i].row(k));
-//                    std::cout << k << ":" << dist << std::endl;
+                else if (operation == 2) {
+                    dist = norm(query_descriptors.row(k), views_descriptors_[i].row(k));
                     average_distance += dist;
                     descriptors_count++;
                 }
@@ -267,12 +265,11 @@ bool MultiviewBodyModel::ready() {
 /*
  * The matching is performed by following the mask values:
  * if mask(i,j) = 0 -> Don't consider keypoints
- * if mask(i,j) = 1 -> Find the keypoint occluded in other views
- * if mask(i,j) = 2 -> Compute the distance between the keupoints
+ * if mask(i,j) = 1 -> Find the keypoint occluded in the other views
+ * if mask(i,j) = 2 -> Compute the distance between the keypoints
  */
 void MultiviewBodyModel::create_confidence_mask(vector<float> &query_confidences, vector<float> &train_confidences,
                                                 vector<char> &out_mask) {
-
 
     assert(query_confidences.size() == train_confidences.size());
 
@@ -293,11 +290,11 @@ void MultiviewBodyModel::create_confidence_mask(vector<float> &query_confidences
 }
 
 /**
- * Finds a non occluded descriptor in another view of the model.
- * returns true if the keypoint is found, false otherwise
+ * Finds the first non-occluded descriptor relative to the keypoint index
+ * in another view of the model.
+ * TRUE if the keypoint is found, FALSE otherwise.
  */
 bool MultiviewBodyModel::get_descriptor_occluded(int keypoint_index, Mat &descriptor_occluded) {
-
 
     // Find a non-occluded descriptor in one pose
     for (int i = 0; i < views_descriptors_.size(); ++i) {
