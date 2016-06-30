@@ -248,6 +248,7 @@ namespace multiviewbodymodel {
         print_list<string>(views_names);
         cout << "max poses: " << max_poses << endl;
         cout << "number of images: " << endl << num_images << endl;
+        cout << (int)num_images.at<uchar>(0, 0);
         cout << "<><><><><><><><><><><><><><><><><><><><><><><><>" << endl;
     }
 
@@ -277,6 +278,7 @@ namespace multiviewbodymodel {
 
         FileStorage fs(out_conf.conf_file_path, FileStorage::READ);
         fs["MainPath"] >> out_conf.main_path;
+
 
         FileNode pn = fs["PersonNames"];
         check_sequence(pn);
@@ -543,6 +545,69 @@ namespace multiviewbodymodel {
     template int get_rank_index<float>(priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > pq,
                                        int query_class);
 
+
+    Mat compute_increment_matrix(vector<vector<string> > train_paths, Mat num_images, int num_persons,
+                                 int num_views, int max_poses) {
+
+        assert(num_images.rows == train_paths.size());
+
+        int size[] = {num_views, max_poses, num_persons};
+        Mat M(3, size, CV_32F);
+        Mat C(3, size, CV_32F);
+
+        for (int k = 0; k < train_paths.size(); ++k) {
+            int j = get_pose_side(train_paths[k][0]) - 1;
+
+            for (int i = 1; i < train_paths[k].size(); ++i) {
+                int tmp = get_pose_side(train_paths[k][i]) - 1;
+                int w = i / (num_images.at<uchar>(k, 0) + 1);
+
+                assert(w < 3);
+
+                if(tmp == j) {
+                    M.at<float>(w, j, k)++;
+                }
+                else {
+                    C.at<float>(w, j, k)++;
+                    j = tmp;
+                }
+            }
+        }
+
+        M /= C;
+
+
+        return M;
+    }
+
+
+    int get_pose_side(string path) {
+
+        // Read the file
+        std::ifstream file(path);
+        if (!file.is_open()) {
+            std::cerr << "Invalid file name." << std::endl;
+            exit(-1);
+        }
+
+        file.seekg(0, ios::end);
+        int pos = file.tellg();
+        pos-=2;
+        file.seekg(pos);
+
+        string line;
+        getline(file, line);
+        stringstream ss(line);
+
+
+        int pose_side;
+        ss >> pose_side;
+
+        file.close();
+
+        return pose_side;
+    }
+
     /*
      * Timing Methods
      */
@@ -595,6 +660,10 @@ namespace multiviewbodymodel {
         }
         cout << "]" << endl;
     }
+
+
+
+
     template void print_list<float>(priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > queue);
 
 }
