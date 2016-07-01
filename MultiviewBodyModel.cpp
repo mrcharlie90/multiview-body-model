@@ -144,7 +144,7 @@ namespace multiviewbodymodel {
         // Search for the corresponding pose side
         for (int i = 0; i < pose_side_.size(); ++i) {
             if (pose_side_[i] == query_pose_side) {
-                // Do the match consindering the keypoint occlusion (by using confidences)
+                // Do the match, consindering the keypoint occlusion (by using confidences)
                 vector<char> confidence_mask;
 
                 // Mask used for defining the operation between two keypoints occluded or semi-occluded.
@@ -248,7 +248,6 @@ namespace multiviewbodymodel {
         print_list<string>(views_names);
         cout << "max poses: " << max_poses << endl;
         cout << "number of images: " << endl << num_images << endl;
-        cout << (int)num_images.at<uchar>(0, 0);
         cout << "<><><><><><><><><><><><><><><><><><><><><><><><>" << endl;
     }
 
@@ -546,39 +545,40 @@ namespace multiviewbodymodel {
                                        int query_class);
 
 
-    Mat compute_increment_matrix(vector<vector<string> > train_paths, Mat num_images, int num_persons,
-                                 int num_views, int max_poses) {
-
-        assert(num_images.rows == train_paths.size());
-
-        int size[] = {num_views, max_poses, num_persons};
-        Mat M(3, size, CV_32F);
-        Mat C(3, size, CV_32F);
-
-        for (int k = 0; k < train_paths.size(); ++k) {
-            int j = get_pose_side(train_paths[k][0]) - 1;
-
-            for (int i = 1; i < train_paths[k].size(); ++i) {
-                int tmp = get_pose_side(train_paths[k][i]) - 1;
-                int w = i / (num_images.at<uchar>(k, 0) + 1);
-
-                assert(w < 3);
-
-                if(tmp == j) {
-                    M.at<float>(w, j, k)++;
-                }
-                else {
-                    C.at<float>(w, j, k)++;
-                    j = tmp;
-                }
-            }
-        }
-
-        M /= C;
-
-
-        return M;
-    }
+//    Mat compute_increment_matrix(vector<vector<string> > train_paths, Mat num_images, int num_persons,
+//                                 int num_views, int max_poses) {
+//
+//        assert(num_images.rows == train_paths.size());
+//
+//        int size[] = {num_views, max_poses, num_persons};
+//        Mat M(3, size, CV_32F);
+//        Mat C;
+//        C = Mat::ones(3, size, CV_32F);
+//
+//        for (int k = 0; k < train_paths.size(); ++k) {
+//            int j = get_pose_side(train_paths[k][0]) - 1;
+//            M.at<float>(0, j, k)++;
+//
+//            for (int i = 1; i < train_paths[k].size(); ++i) {
+//                cout << train_paths[k][i] << endl;
+//                int tmp = get_pose_side(train_paths[k][i]) - 1;
+//                int w = i / (num_images.at<uchar>(k, 0) + 1);
+//
+//                assert(w < 3);
+//
+//                if(tmp == j) {
+//                    M.at<float>(w, j, k)++;
+//                }
+//                else {
+//                    C.at<float>(w, j, k)++;
+//                    j = tmp;
+//                    M.at<float>(w, j, k)++;
+//                }
+//            }
+//        }
+//
+//        return (M / C);
+//    }
 
 
     int get_pose_side(string path) {
@@ -608,6 +608,108 @@ namespace multiviewbodymodel {
         return pose_side;
     }
 
+    /**
+     * Counts the number of successive images with the same pose side
+     */
+    /**
+     * Example:
+     *  img   |   pose
+     *  1     |   1
+     *  2     |   1
+     *  3     |   1
+     *  4     |   2
+     *  5     |   3
+     *  6     |   3
+     *  7     |   3
+     *  8     |   3
+     *  9     |   4
+     *  10    |   4
+     *
+     *  produce
+     *  [1 3 2 1 3 4 4 2]
+     *  for each element i
+     *  if i is even => pose
+     *  if i is odd => number of successive images with the same pose
+     */
+    void get_poses_map(vector<vector<string> > train_paths, vector<vector<int> > &out_map) {
+
+
+        for (int i = 0; i < train_paths.size(); ++i) {
+            vector<int> vec;
+            int prev = get_pose_side(train_paths[i][0]);
+            vec.push_back(prev);
+
+            int counter = 1;
+            for (int j = 1; j < train_paths[i].size(); ++j) {
+
+                int cur = get_pose_side(train_paths[i][j]);
+                if (cur == prev) {
+                    counter++;
+                }
+                else {
+                    // Change the current pose side and save the counter
+                    // the counter follow the pose side.
+                    vec.push_back(counter);
+                    vec.push_back(cur);
+                    prev = cur;
+                    counter = 1;
+                }
+            }
+            vec.push_back(counter);
+            out_map.push_back(vec);
+        }
+    }
+
+    /**
+     * From a map with the number of successively pose sides, give you
+     * a set of random indeces uniformly distributed.
+     *
+     * Returns the total number of images
+     */
+    int get_rnd_indeces(vector<vector<int> > map, vector<vector<int> > &rnd_indeces) {
+
+        // Total number of images
+        int tot_imgs = 0;
+        for (int i = 0; i < map.size(); ++i) {
+            // for i odd, map[i] has the number of successively pose sides
+            // in the dataset
+            vector<int> vec;
+            int current_idx = 0;
+            // Build a vector containing a number of random indeces referred
+            // to images in the dataset
+            for (int j = 0; j <= (map[i].size() - 1) / 2; ++j) {
+                RNG rng((uint64) getTickCount());
+                // Random number between [0, map[][])
+                int n = (int)rng.uniform(0., (double)(map[i][2 * j + 1]));
+                vec.push_back(current_idx + n);
+                current_idx += map[i][2 * j + 1];
+            }
+            tot_imgs += vec.size();
+            rnd_indeces.push_back(vec);
+        }
+
+        return tot_imgs;
+    }
+
+    /**
+     * Results
+     */
+    void saveCMC(string path, Mat cmc) {
+        assert(cmc.rows == 1);
+
+        cout << "Saving CMC...";
+        ofstream file(path);
+        // {(0,23.1)(1,27.5)(2,32)(3,37.8)(4,44.6)(6,61.8)(8,83.8)(10,100)};
+        file << "coordinates {(0,0)";
+        for (int j = 0; j < cmc.cols; ++j) {
+            file << "(" << j+1 << "," << cmc.at<float>(0, j) * 100 << ")";
+        }
+        file << "};";
+        file.close();
+        cout << "done!" << endl;
+    }
+
+
     /*
      * Timing Methods
      */
@@ -635,7 +737,6 @@ namespace multiviewbodymodel {
         cout << "-----------------------------------------------" << endl;
     }
 
-
     /**
      * Logging
      */
@@ -648,7 +749,6 @@ namespace multiviewbodymodel {
     }
     template void print_list<int>(vector<int> vect);
     template void print_list<float>(vector<float> vect);
-
     template<typename T> void print_list(priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > queue) {
         RankElement<T> re = queue.top();
         cout << "[" << re.score << "|" << re.classIdx;
@@ -660,12 +760,7 @@ namespace multiviewbodymodel {
         }
         cout << "]" << endl;
     }
-
-
-
-
     template void print_list<float>(priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > queue);
-
 }
 
 

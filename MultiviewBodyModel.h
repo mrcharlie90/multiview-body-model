@@ -180,9 +180,13 @@ namespace  multiviewbodymodel {
     void check_sequence(FileNode fn);
     void parse_args(int argc, char **argv, Configuration &out_conf);
 
-    Mat compute_increment_matrix(vector<vector<string> > train_paths, Mat num_images, int num_persons, int num_views,
-                                 int max_poses);
     int get_pose_side(string path);
+
+    void get_poses_map(vector<vector<string> > train_paths, vector<vector<int> > &out_map);
+
+    int get_rnd_indeces(vector<vector<int> > map, vector<vector<int> > &rnd_indeces);
+
+    void saveCMC(string path, Mat cmc);
 
     template<typename T>
     int get_rank_index(priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > pq, int query_class);
