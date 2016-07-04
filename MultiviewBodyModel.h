@@ -56,6 +56,10 @@ namespace  multiviewbodymodel {
         // Overall time to compute the matching
         double t_tot_matching;
 
+        // Overall times
+        vector<double> t_descriptor_names;
+        vector<string> descriptor_names;
+
         void write();
         void show();
     };
@@ -131,6 +135,7 @@ namespace  multiviewbodymodel {
     template<typename T>
     void print_list(priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > queue);
 
+    
     /**
      * Group all the necessary information for obtaining training(testing) files
      * and parameters.
@@ -145,7 +150,7 @@ namespace  multiviewbodymodel {
         int max_poses;
 
         // From the command line
-        string descriptor_extractor_type;
+        vector<string> descriptor_extractor_type;
         int keypoint_size;
 
         void show();
@@ -158,9 +163,6 @@ namespace  multiviewbodymodel {
     void load_train_paths(Configuration conf, vector<vector<string> > &skels_paths,
                           vector<vector<string> > &imgs_paths);
 
-    void load_test_paths(vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-                         vector<string> &query_skels_paths, vector<string> &query_imgs_paths);
-
     bool load_training_set(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
                            vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
                            vector<MultiviewBodyModel> &out_models, Timing &timing);
@@ -171,10 +173,7 @@ namespace  multiviewbodymodel {
 
     void read_skel(string descriptor_extractor_type, int keypoint_size, string skel_path, string img_path,
                    Mat &out_image, vector<KeyPoint> &out_keypoints, vector<float> &out_confidences,
-                   Mat &out_descriptors, int &out_pose_side);
-
-    void read_skel(Configuration conf, string skel_path, string img_path, Mat &out_image, vector <KeyPoint> &out_keypoints,
-                       vector<float> &out_confidences, Mat &out_descriptors, int &pose_side, Timing &timing);
+                   Mat &out_descriptors, int &out_pose_side, Timing &timing);
 
 
     void check_sequence(FileNode fn);

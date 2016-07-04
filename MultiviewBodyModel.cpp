@@ -39,7 +39,7 @@ namespace multiviewbodymodel {
         string line;
         std::ifstream file(path);
         if (!file.is_open()) {
-            std::cerr << "Invalid file name." << std::endl;
+            std::cerr << "ReadAndCompute: " << path << "Invalid file name." << std::endl;
             exit(-1);
         }
 
@@ -92,6 +92,8 @@ namespace multiviewbodymodel {
         std::stringstream ss(line);
         ss >> pose_side;
 
+        assert(pose_side <= max_poses_);
+
         // Check if the pose already exists...
         vector<int>::iterator iter = find(pose_side_.begin(), pose_side_.end(), pose_side);
 
@@ -100,7 +102,7 @@ namespace multiviewbodymodel {
             // Read image
             cv::Mat img = cv::imread(img_path);
             if (!img.data) {
-                std::cerr << "Invalid image file." << std::endl;
+                std::cerr << "ReadAndCompute:" << img_path << "Invalid image file." << std::endl;
                 exit(0);
             }
             views_images_.push_back(img);
@@ -159,14 +161,14 @@ namespace multiviewbodymodel {
                     // If the occlusion_search flag is true, look
                     Mat descriptor_occluded;
                     double dist;
-                    if(operation == 1 && occlusion_search) {
-                        // TODO: obsolete if
-                        if (get_descriptor_occluded(k, descriptor_occluded)) {
-                            // A descriptor is found, so compute the distance
-                            dist = norm(query_descriptors.row(k), descriptor_occluded);
-                            average_distance += dist;
-                            descriptors_count++;
-                        }
+                    if (operation == 1 && occlusion_search &&
+                        get_descriptor_occluded(k, descriptor_occluded)) {
+
+
+                        // A descriptor is found, so compute the distance
+                        dist = norm(query_descriptors.row(k), descriptor_occluded);
+                        average_distance += dist;
+                        descriptors_count++;
                     }
                     else if (operation == 2) {
                         dist = norm(query_descriptors.row(k), views_descriptors_[i].row(k));
@@ -174,14 +176,16 @@ namespace multiviewbodymodel {
                         descriptors_count++;
                     }
                 }
-//            cout << average_distance / descriptors_count << endl;
                 return average_distance / descriptors_count;
             }
         }
+
         return -1;
     }
 
-
+    /**
+     * Returns true when the model has loaded all the poses.
+     */
     bool MultiviewBodyModel::ready() {
         return (pose_side_.size() == max_poses_);
     }
@@ -219,11 +223,9 @@ namespace multiviewbodymodel {
      * TRUE if the keypoint is found, FALSE otherwise.
      */
     bool MultiviewBodyModel::get_descriptor_occluded(int keypoint_index, Mat &descriptor_occluded) {
-
         // Find a non-occluded descriptor in one pose
         for (int i = 0; i < views_descriptors_.size(); ++i) {
             if (views_descriptors_confidences_[i][keypoint_index] > 0) {
-//            std::cout << "descriptor k = " << keypoint_index << " found at view = " << i << std::endl;
                 descriptor_occluded = views_descriptors_[i].row(keypoint_index);
                 return true;
             }
@@ -232,13 +234,13 @@ namespace multiviewbodymodel {
     }
 
 
-
-
-
     //
     // <><><><><><><><><><> Main function definitions <><><><><><><><><><>
     //
 
+    /**
+     * Shows the configuration parameters
+     */
     void Configuration::show() {
         cout << "<><><><><><><><> Configuration <><><><><><><><>" << endl;
         cout << "main path: " << main_path << endl;
@@ -265,9 +267,20 @@ namespace multiviewbodymodel {
                     ss.str("");
                 }
                 else if (strcmp(argv[i], "-d") == 0) {
-                    ss << argv[++i];
-                    out_conf.descriptor_extractor_type = ss.str();
-                    ss.str("");
+                    if (strcmp(argv[i+1], "all") == 0) {
+                        out_conf.descriptor_extractor_type.push_back("SURF");
+                        out_conf.descriptor_extractor_type.push_back("SIFT");
+                        out_conf.descriptor_extractor_type.push_back("BRIEF");
+                        out_conf.descriptor_extractor_type.push_back("BRISK");
+                        out_conf.descriptor_extractor_type.push_back("ORB");
+                        out_conf.descriptor_extractor_type.push_back("FREAK");
+                    }
+                    else {
+                        ss << argv[++i];
+                        out_conf.descriptor_extractor_type.push_back(ss.str());
+                        ss.str("");
+                    }
+
                 }
                 else if (strcmp(argv[i], "-k") == 0) {
                     out_conf.keypoint_size = atoi(argv[++i]);
@@ -300,7 +313,9 @@ namespace multiviewbodymodel {
         fs.release();
     }
 
-    // Checks if the file node fn is a sequence, used only in parse_args()
+    /**
+     * Checks if the file node fn is a sequence, used only in parse_args()
+     */
     void check_sequence(FileNode fn) {
         if(fn.type() != FileNode::SEQ) {
             cerr << "Configuration file error: not a sequence." << endl;
@@ -339,6 +354,7 @@ namespace multiviewbodymodel {
                     ss_skels.str("");
                 }
             }
+
             imgs_paths.push_back(imgs_path);
             skels_paths.push_back(skels_path);
         }
@@ -348,21 +364,68 @@ namespace multiviewbodymodel {
         load_train_paths(conf.main_path, conf.persons_names, conf.views_names, conf.num_images, skels_paths, imgs_paths);
     }
 
-    /**
-     * Converts the training paths sorted by person (vec<vec<string>>) to a straight lists of paths (vec<string>).
+    /*
+     * Loads one model for each person with all the pose.
+     * out_models: vector of body models where the descriptors are stored
+     * masks: vector of masks, where mask[i].at(j, 0) is referred to the jth-pose of the ith-person.
+     * Once the jth pose is loaded into the model, the relative mask element is updated (set to 1).
+     *
+     * Set timing = NULL for no performance logging
+     *
+     * returns TRUE if all the models are successfully loaded.
      */
-    void load_test_paths(vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-                         vector<string> &query_skels_paths, vector<string> &query_imgs_paths) {
-
-        assert(train_imgs_paths.size() == train_skels_paths.size());
-
-        for (int i = 0; i < train_imgs_paths.size(); ++i) {
-            for (int j = 0; j < train_imgs_paths[i].size(); ++j) {
-                query_skels_paths.push_back((train_skels_paths[i][j]));
-                query_imgs_paths.push_back(train_imgs_paths[i][j]);
-            }
-        }
-    }
+//    bool load_training_set(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
+//                           vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
+//                           vector<MultiviewBodyModel> &out_models, Timing &timing) {
+//        // Timing
+//        double t0 = (timing.enabled) ? (double)getTickCount() : 0;
+//
+//        // Checking dimensions
+//        assert(train_imgs_paths.size() == train_skels_paths.size());
+//
+//
+//        // train_skels_paths.size() = the number of people
+//        for (int i = 0; i < train_skels_paths.size(); ++i) {
+//
+//            // Checking dimensions
+//            assert(train_imgs_paths[i].size() == train_skels_paths[i].size());
+//
+//            MultiviewBodyModel body_model(max_poses);
+//
+//            // current image
+//            int j = 0;
+//            // number of images inserted
+//            // [NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0 ]
+//            int tot_images_marked = static_cast<int>(sum(masks[i].row(0))[0]);
+//
+//            while (!body_model.ready() && tot_images_marked < train_imgs_paths[i].size() && j < train_imgs_paths[i].size()) {
+//
+//                // Insert the pose if not present, and remove it from the paths
+//                if (masks[i].row(0).at<uchar>(j) == 0) {
+//                    if (body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
+//                                                  descriptor_extractor_type, keypoint_size, timing)) {
+//                        masks[i].row(0).at<uchar>(j) = 1;
+//                        tot_images_marked++;
+//                    }
+//                }
+//                ++j;
+//            }
+//
+//            // If the model contains all poses then add it to the vector
+//            // otherwise the model is not valid, then exit.
+//            if (body_model.ready())
+//                out_models.push_back(body_model);
+//            else
+//                return false;
+//        }
+//
+//        if (timing.enabled) {
+//            timing.t_tot_load_training_set += ((double)getTickCount() - t0) / getTickFrequency();
+//            timing.n_tot_load_training_set++;
+//        }
+//
+//        return true;
+//    }
 
     /*
      * Loads one model for each person with all the pose.
@@ -396,19 +459,32 @@ namespace multiviewbodymodel {
             int j = 0;
             // number of images inserted
             // [NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0 ]
-            int tot_images_marked = static_cast<int>(sum(masks[i].col(0))[0]);
+            int non_zero_counter = countNonZero(masks[i].row(0));
 
-            while (!body_model.ready() && tot_images_marked < train_imgs_paths[i].size()) {
+            int value = 0;
+            int max_size_idx = 0;
+
+            for (int k = 1; k < train_imgs_paths.size(); ++k) {
+                if (train_imgs_paths[max_size_idx].size() < train_imgs_paths[k].size())
+                    max_size_idx = k;
+            }
+
+            while (!body_model.ready() && non_zero_counter <= train_imgs_paths[max_size_idx].size()) {
 
                 // Insert the pose if not present, and remove it from the paths
-                if (masks[i].at<uchar>(j, 0) == 0) {
+                if (masks[i].row(0).at<uchar>(j) == value) {
                     if (body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
                                                   descriptor_extractor_type, keypoint_size, timing)) {
-                        masks[i].at<uchar>(j, 0) = 1;
-                        tot_images_marked++;
+                        masks[i].row(0).at<uchar>(j)++;
+                        non_zero_counter++;
                     }
                 }
                 ++j;
+
+                if (j == train_imgs_paths[i].size()) {
+                    j = 0;
+                    value++;
+                }
             }
 
             // If the model contains all poses then add it to the vector
@@ -427,13 +503,58 @@ namespace multiviewbodymodel {
         return true;
     }
 
-    bool load_training_set(Configuration conf, vector<Mat> &masks, vector<vector<string> > &train_skels_paths,
-                           vector<vector<string> > &train_imgs_paths, vector<MultiviewBodyModel> &out_models, Timing &timing) {
-        return load_training_set(conf.descriptor_extractor_type, conf.keypoint_size, conf.max_poses, masks,
-                                 train_skels_paths, train_imgs_paths, out_models, timing);
-
-    }
-
+//    bool load_training_set(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
+//                           vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
+//                           vector<MultiviewBodyModel> &out_models, Timing &timing) {
+//        // Timing
+//        double t0 = (timing.enabled) ? (double)getTickCount() : 0;
+//
+//        // Checking dimensions
+//        assert(train_imgs_paths.size() == train_skels_paths.size());
+//
+//
+//        // train_skels_paths.size() = the number of people
+//        for (int i = 0; i < train_skels_paths.size(); ++i) {
+//
+//            // Checking dimensions
+//            assert(train_imgs_paths[i].size() == train_skels_paths[i].size());
+//
+//            MultiviewBodyModel body_model(max_poses);
+//
+//            // current image
+//            int j = 0;
+//            // number of images inserted
+//            // [NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0 ]
+//            int tot_images_marked = static_cast<int>(sum(masks[i].row(0))[0]);
+//
+//            while (!body_model.ready() && tot_images_marked < train_imgs_paths[i].size() && j < train_imgs_paths[i].size()) {
+//
+//                // Insert the pose if not present, and remove it from the paths
+//                if (masks[i].row(0).at<uchar>(j) == 0) {
+//                    if (body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
+//                                                  descriptor_extractor_type, keypoint_size, timing)) {
+//                        masks[i].row(0).at<uchar>(j) = 1;
+//                        tot_images_marked++;
+//                    }
+//                }
+//                ++j;
+//            }
+//
+//            // If the model contains all poses then add it to the vector
+//            // otherwise the model is not valid, then exit.
+//            if (body_model.ready())
+//                out_models.push_back(body_model);
+//            else
+//                return false;
+//        }
+//
+//        if (timing.enabled) {
+//            timing.t_tot_load_training_set += ((double)getTickCount() - t0) / getTickFrequency();
+//            timing.n_tot_load_training_set++;
+//        }
+//
+//        return true;
+//    }
 
     /*
      * Reads the skeleton from a file and  computes its descriptors.
@@ -441,12 +562,15 @@ namespace multiviewbodymodel {
      */
     void read_skel(string descriptor_extractor_type, int keypoint_size, string skel_path, string img_path, Mat &out_image,
                    vector<KeyPoint> &out_keypoints, vector<float> &out_confidences, Mat &out_descriptors,
-                   int &out_pose_side) {
+                   int &out_pose_side, Timing &timing) {
+
+        double t0 = (timing.enabled) ? getTickCount() : 0;
+
         // Read the file
         string line;
         std::ifstream file(skel_path);
         if (!file.is_open()) {
-            std::cerr << "Invalid file name." << std::endl;
+            std::cerr << "read_skel: " << skel_path << "Invalid file name." << std::endl;
             exit(-1);
         }
 
@@ -501,21 +625,12 @@ namespace multiviewbodymodel {
         // Read image
         out_image = cv::imread(img_path);
         if (!out_image.data) {
-            std::cerr << "Invalid image file." << std::endl;
+            std::cerr << "read_skel: " << img_path << "Invalid image file." << std::endl;
         }
 
         // Compute descriptors for this view
         cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
         descriptor_extractor->compute(out_image, out_keypoints, out_descriptors);
-    }
-
-    void read_skel(Configuration conf, string skel_path, string img_path, Mat &out_image, vector <KeyPoint> &out_keypoints,
-                       vector<float> &out_confidences, Mat &out_descriptors, int &out_pose_side, Timing &timing) {
-        double t0 = (timing.enabled) ? getTickCount() : 0;
-        read_skel(conf.descriptor_extractor_type, conf.keypoint_size,
-                  skel_path,
-                  img_path, out_image, out_keypoints,
-                  out_confidences, out_descriptors, out_pose_side);
 
         if (timing.enabled) {
             timing.t_tot_skel_loading += ((double)getTickCount() - t0) / getTickFrequency();
@@ -540,53 +655,18 @@ namespace multiviewbodymodel {
         }
         return (int) (pq.size() - 1);
     }
-
     template int get_rank_index<float>(priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > pq,
                                        int query_class);
 
-
-//    Mat compute_increment_matrix(vector<vector<string> > train_paths, Mat num_images, int num_persons,
-//                                 int num_views, int max_poses) {
-//
-//        assert(num_images.rows == train_paths.size());
-//
-//        int size[] = {num_views, max_poses, num_persons};
-//        Mat M(3, size, CV_32F);
-//        Mat C;
-//        C = Mat::ones(3, size, CV_32F);
-//
-//        for (int k = 0; k < train_paths.size(); ++k) {
-//            int j = get_pose_side(train_paths[k][0]) - 1;
-//            M.at<float>(0, j, k)++;
-//
-//            for (int i = 1; i < train_paths[k].size(); ++i) {
-//                cout << train_paths[k][i] << endl;
-//                int tmp = get_pose_side(train_paths[k][i]) - 1;
-//                int w = i / (num_images.at<uchar>(k, 0) + 1);
-//
-//                assert(w < 3);
-//
-//                if(tmp == j) {
-//                    M.at<float>(w, j, k)++;
-//                }
-//                else {
-//                    C.at<float>(w, j, k)++;
-//                    j = tmp;
-//                    M.at<float>(w, j, k)++;
-//                }
-//            }
-//        }
-//
-//        return (M / C);
-//    }
-
-
+    /**
+     * Returns the pose side given the skel path.
+     */
     int get_pose_side(string path) {
 
         // Read the file
         std::ifstream file(path);
         if (!file.is_open()) {
-            std::cerr << "Invalid file name." << std::endl;
+            std::cerr << "get_pose_side: " << path << "Invalid file name." << std::endl;
             exit(-1);
         }
 
@@ -687,7 +767,6 @@ namespace multiviewbodymodel {
             tot_imgs += vec.size();
             rnd_indeces.push_back(vec);
         }
-
         return tot_imgs;
     }
 
@@ -700,7 +779,7 @@ namespace multiviewbodymodel {
         cout << "Saving CMC...";
         ofstream file(path);
         // {(0,23.1)(1,27.5)(2,32)(3,37.8)(4,44.6)(6,61.8)(8,83.8)(10,100)};
-        file << "coordinates {(0,0)";
+        file << "coordinates {";
         for (int j = 0; j < cmc.cols; ++j) {
             file << "(" << j+1 << "," << cmc.at<float>(0, j) * 100 << ")";
         }
@@ -709,11 +788,9 @@ namespace multiviewbodymodel {
         cout << "done!" << endl;
     }
 
-
     /*
      * Timing Methods
      */
-
     void multiviewbodymodel::Timing::write() {
         FileStorage fs("timing.xml", FileStorage::WRITE);
         fs << "avgLoadingTrainingSet" << (t_tot_load_training_set / n_tot_load_training_set);
@@ -722,6 +799,17 @@ namespace multiviewbodymodel {
         fs << "avgOneModelLoading" << (t_tot_model_loading / n_tot_model_loading);
         fs << "avgSkelLoading" << (t_tot_skel_loading / n_tot_skel_loading);
         fs << "totMatching" << t_tot_matching;
+        fs << "descriptorNames" << "[";
+        string data;
+        for (int i = 0; i < descriptor_names.size(); ++i) {
+            fs << descriptor_names[i];
+        }
+        fs << "]";
+        fs << "descriptorTimes" << "[";
+        for (int j = 0; j < t_descriptor_names.size(); ++j) {
+            fs << t_descriptor_names[j];
+        }
+        fs << "]";
         fs.release();
     }
 
