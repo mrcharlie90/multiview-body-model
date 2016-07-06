@@ -1,31 +1,32 @@
-//
-// Created by Mauro on 15/04/16.
-//
+// Copyright (c) [2016] [Mauro Piazza]
+// 
+//          IASLab License
+// 
+// This file contains all  methods deifinition of the MultiviewBodyModel class
+// and the multiviewbodymodel namespace.
 
 #include "MultiviewBodyModel.h"
 
 namespace multiviewbodymodel {
-    using namespace std;
-    using namespace cv;
+    using std::vector;
+    using std::cout;
+    using std::endl;
+    using std::cerr;
+    using cv::string;
+    using cv::Mat;
 
-    /*
-     * Constructor
-     */
+    // -------------------------------------------------------------------------
+    //                      MultiviewBodyModel methods definitions
+    // -------------------------------------------------------------------------
+
     MultiviewBodyModel::MultiviewBodyModel(int max_poses) {
         max_poses_ = max_poses;
     }
 
-    /*
-     * Adds new skeleton descriptors to the body model. The *_skel.txt file should contain 15 keypoints'
-     * [float] coordinates with the pose side number [int] at the end.
-     * Returns true if the pose's descriptors are successfully saved and false if the pose is already acquired.
-     *
-     *  Set timing NULL for no performance logging
-     */
     bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string descriptor_extractor_type, int keypoint_size, Timing &timing) {
 
         // Timing
-        double ti_model = (timing.enabled) ? (double)getTickCount() : 0;
+        double ti_model = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
         // Return value
         bool value = false;
@@ -108,14 +109,14 @@ namespace multiviewbodymodel {
             views_images_.push_back(img);
 
             // Compute descriptors for this view
-            double ti_desc = (timing.enabled) ? (double)getTickCount() : 0;
+            double ti_desc = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
             cv::Mat descriptors;
             cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
             descriptor_extractor->compute(img, keypoints, descriptors);
 
             if (timing.enabled) {
-                timing.t_tot_descriptors += ((double)getTickCount() - ti_desc) / getTickFrequency();
+                timing.t_tot_descriptors += ((double)cv::getTickCount() - ti_desc) / cv::getTickFrequency();
                 timing.n_tot_descriptors++;
             }
 
@@ -126,18 +127,14 @@ namespace multiviewbodymodel {
             value = true;
         }
         if (timing.enabled) {
-            timing.t_tot_model_loading += ((double)getTickCount() - ti_model) / getTickFrequency();
+            timing.t_tot_model_loading += ((double)cv::getTickCount() - ti_model) / cv::getTickFrequency();
             timing.n_tot_model_loading++;
         }
 
         return value;
     }
 
-    /**
-     * Computes the match between this model poses and the query pose.
-     * Confidences and the pose index side must be given.
-     */
-    float MultiviewBodyModel::match(Mat query_descriptors, vector<float> query_confidences,
+    float MultiviewBodyModel::Match(Mat query_descriptors, vector<float> query_confidences,
                                     int query_pose_side, bool occlusion_search) {
         // Checking the model is ready
         assert(this->ready());
@@ -183,19 +180,10 @@ namespace multiviewbodymodel {
         return -1;
     }
 
-    /**
-     * Returns true when the model has loaded all the poses.
-     */
     bool MultiviewBodyModel::ready() {
         return (pose_side_.size() == max_poses_);
     }
 
-    /*
-     * The matching is performed by following the mask values:
-     * if mask(i,j) = 0 -> Don't consider keypoints
-     * if mask(i,j) = 1 -> Find the keypoint occluded in the other views
-     * if mask(i,j) = 2 -> Compute the distance between the keypoints
-     */
     void MultiviewBodyModel::create_confidence_mask(vector<float> &query_confidences, vector<float> &train_confidences,
                                                     vector<char> &out_mask) {
 
@@ -217,11 +205,7 @@ namespace multiviewbodymodel {
         }
     }
 
-    /**
-     * Finds the first non-occluded descriptor relative to the keypoint index
-     * in another view of the model.
-     * TRUE if the keypoint is found, FALSE otherwise.
-     */
+
     bool MultiviewBodyModel::get_descriptor_occluded(int keypoint_index, Mat &descriptor_occluded) {
         // Find a non-occluded descriptor in one pose
         for (int i = 0; i < views_descriptors_.size(); ++i) {
@@ -234,30 +218,39 @@ namespace multiviewbodymodel {
     }
 
 
-    //
-    // <><><><><><><><><><> Main function definitions <><><><><><><><><><>
-    //
+    // -------------------------------------------------------------------------
+    //                      Utility functions definitions
+    // -------------------------------------------------------------------------
 
-    /**
-     * Shows the configuration parameters
-     */
     void Configuration::show() {
-        cout << "<><><><><><><><> Configuration <><><><><><><><>" << endl;
-        cout << "main path: " << main_path << endl;
-        cout << "persons names: " << endl;
-        print_list<string>(persons_names);
-        cout << "views names: " << endl;
-        print_list<string>(views_names);
-        cout << "max poses: " << max_poses << endl;
-        cout << "number of images: " << endl << num_images << endl;
-        cout << "<><><><><><><><><><><><><><><><><><><><><><><><>" << endl;
+        cout << "---------------- CONFIGURATION --------------------------------" << endl << endl;
+        cout << "MAIN PATH: " << main_path << endl;
+        cout << "PERSONS NAMES: " << endl;
+        cout << "[" << persons_names[0];
+        for (int k = 1; k < persons_names.size(); ++k) {
+            cout << ", " << persons_names[k];
+            if (k % 2 == 0 && k < persons_names.size() - 1)
+                cout << endl;
+        }
+        cout << "]" << endl;
+        cout << "VIEWS NAMES: ";
+        cout << "[" << views_names[0];
+        for (int j = 1; j < views_names.size(); ++j) {
+            cout << ", " << views_names[j];
+        }
+        cout << "]" << endl;
+        cout << "MAX POSES: " << max_poses << endl;
+        cout << "NUMBER OF IMAGES: ";
+        cout << "[" << (int)num_images.at<uchar>(0, 0);
+        for (int i = 1; i < num_images.rows; i++) {
+            cout << ", " << (int)num_images.at<uchar>(i, 0);
+        }
+        cout << "]" << endl << endl;
+        cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
     }
 
-    /**
-     * Parse input arguments and initialize the configuration object.
-     */
     void parse_args(int argc, char **argv, Configuration &out_conf) {
-        stringstream ss;
+        std::stringstream ss;
 
         for (int i = 1; i < argc; ++i) {
             if (i + 1 != argc) {
@@ -288,18 +281,18 @@ namespace multiviewbodymodel {
             }
         }
 
-        FileStorage fs(out_conf.conf_file_path, FileStorage::READ);
+        cv::FileStorage fs(out_conf.conf_file_path, cv::FileStorage::READ);
         fs["MainPath"] >> out_conf.main_path;
 
 
-        FileNode pn = fs["PersonNames"];
+        cv::FileNode pn = fs["PersonNames"];
         check_sequence(pn);
-        for (FileNodeIterator it = pn.begin(); it != pn.end(); ++it)
+        for (cv::FileNodeIterator it = pn.begin(); it != pn.end(); ++it)
             out_conf.persons_names.push_back((string)*it);
 
-        FileNode wn = fs["ViewNames"];
+        cv::FileNode wn = fs["ViewNames"];
         check_sequence(wn);
-        for (FileNodeIterator it = wn.begin(); it != wn.end(); ++it)
+        for (cv::FileNodeIterator it = wn.begin(); it != wn.end(); ++it)
             out_conf.views_names.push_back((string)*it);
 
         fs["NumImages"] >> out_conf.num_images;
@@ -313,25 +306,22 @@ namespace multiviewbodymodel {
         fs.release();
     }
 
-    /**
-     * Checks if the file node fn is a sequence, used only in parse_args()
-     */
-    void check_sequence(FileNode fn) {
-        if(fn.type() != FileNode::SEQ) {
+    
+    // Checks if the file node fn is a sequence, used only in parse_args()
+    
+    void check_sequence(cv::FileNode fn) {
+        if(fn.type() != cv::FileNode::SEQ) {
             cerr << "Configuration file error: not a sequence." << endl;
             exit(-1);
         }
     }
 
-    /**
-     * Loads training paths ordered by person.
-     */
     void load_train_paths(string main_path, vector<string> persons_names, vector<string> views_names,
                           Mat num_images, vector<vector<string> > &skels_paths, vector<vector<string> > &imgs_paths) {
 
         assert(persons_names.size() == num_images.rows);
 
-        stringstream ss_imgs, ss_skels;
+        std::stringstream ss_imgs, ss_skels;
 
         for (int i = 0; i < persons_names.size(); ++i) {
             vector<string> imgs_path;
@@ -360,88 +350,16 @@ namespace multiviewbodymodel {
         }
     }
 
-    void load_train_paths(Configuration conf, vector<vector<string> > &skels_paths, vector<vector<string> > &imgs_paths) {
-        load_train_paths(conf.main_path, conf.persons_names, conf.views_names, conf.num_images, skels_paths, imgs_paths);
+    void load_train_paths(Configuration conf, vector<vector<string> > &out_skels_paths,
+                          vector<vector<string> > &out_imgs_paths) {
+        load_train_paths(conf.main_path, conf.persons_names, conf.views_names, conf.num_images, out_skels_paths, out_imgs_paths);
     }
 
-    /*
-     * Loads one model for each person with all the pose.
-     * out_models: vector of body models where the descriptors are stored
-     * masks: vector of masks, where mask[i].at(j, 0) is referred to the jth-pose of the ith-person.
-     * Once the jth pose is loaded into the model, the relative mask element is updated (set to 1).
-     *
-     * Set timing = NULL for no performance logging
-     *
-     * returns TRUE if all the models are successfully loaded.
-     */
-//    bool load_training_set(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
-//                           vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-//                           vector<MultiviewBodyModel> &out_models, Timing &timing) {
-//        // Timing
-//        double t0 = (timing.enabled) ? (double)getTickCount() : 0;
-//
-//        // Checking dimensions
-//        assert(train_imgs_paths.size() == train_skels_paths.size());
-//
-//
-//        // train_skels_paths.size() = the number of people
-//        for (int i = 0; i < train_skels_paths.size(); ++i) {
-//
-//            // Checking dimensions
-//            assert(train_imgs_paths[i].size() == train_skels_paths[i].size());
-//
-//            MultiviewBodyModel body_model(max_poses);
-//
-//            // current image
-//            int j = 0;
-//            // number of images inserted
-//            // [NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0 ]
-//            int tot_images_marked = static_cast<int>(sum(masks[i].row(0))[0]);
-//
-//            while (!body_model.ready() && tot_images_marked < train_imgs_paths[i].size() && j < train_imgs_paths[i].size()) {
-//
-//                // Insert the pose if not present, and remove it from the paths
-//                if (masks[i].row(0).at<uchar>(j) == 0) {
-//                    if (body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
-//                                                  descriptor_extractor_type, keypoint_size, timing)) {
-//                        masks[i].row(0).at<uchar>(j) = 1;
-//                        tot_images_marked++;
-//                    }
-//                }
-//                ++j;
-//            }
-//
-//            // If the model contains all poses then add it to the vector
-//            // otherwise the model is not valid, then exit.
-//            if (body_model.ready())
-//                out_models.push_back(body_model);
-//            else
-//                return false;
-//        }
-//
-//        if (timing.enabled) {
-//            timing.t_tot_load_training_set += ((double)getTickCount() - t0) / getTickFrequency();
-//            timing.n_tot_load_training_set++;
-//        }
-//
-//        return true;
-//    }
-
-    /*
-     * Loads one model for each person with all the pose.
-     * out_models: vector of body models where the descriptors are stored
-     * masks: vector of masks, where mask[i].at(j, 0) is referred to the jth-pose of the ith-person.
-     * Once the jth pose is loaded into the model, the relative mask element is updated (set to 1).
-     *
-     * Set timing = NULL for no performance logging
-     *
-     * returns TRUE if all the models are successfully loaded.
-     */
-    bool load_training_set(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
-                           vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-                           vector<MultiviewBodyModel> &out_models, Timing &timing) {
+    bool load_models(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
+                     vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
+                     vector<MultiviewBodyModel> &out_models, Timing &timing) {
         // Timing
-        double t0 = (timing.enabled) ? (double)getTickCount() : 0;
+        double t0 = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
         // Checking dimensions
         assert(train_imgs_paths.size() == train_skels_paths.size());
@@ -496,75 +414,18 @@ namespace multiviewbodymodel {
         }
 
         if (timing.enabled) {
-            timing.t_tot_load_training_set += ((double)getTickCount() - t0) / getTickFrequency();
+            timing.t_tot_load_training_set += ((double)cv::getTickCount() - t0) / cv::getTickFrequency();
             timing.n_tot_load_training_set++;
         }
 
         return true;
     }
 
-//    bool load_training_set(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
-//                           vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-//                           vector<MultiviewBodyModel> &out_models, Timing &timing) {
-//        // Timing
-//        double t0 = (timing.enabled) ? (double)getTickCount() : 0;
-//
-//        // Checking dimensions
-//        assert(train_imgs_paths.size() == train_skels_paths.size());
-//
-//
-//        // train_skels_paths.size() = the number of people
-//        for (int i = 0; i < train_skels_paths.size(); ++i) {
-//
-//            // Checking dimensions
-//            assert(train_imgs_paths[i].size() == train_skels_paths[i].size());
-//
-//            MultiviewBodyModel body_model(max_poses);
-//
-//            // current image
-//            int j = 0;
-//            // number of images inserted
-//            // [NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0 ]
-//            int tot_images_marked = static_cast<int>(sum(masks[i].row(0))[0]);
-//
-//            while (!body_model.ready() && tot_images_marked < train_imgs_paths[i].size() && j < train_imgs_paths[i].size()) {
-//
-//                // Insert the pose if not present, and remove it from the paths
-//                if (masks[i].row(0).at<uchar>(j) == 0) {
-//                    if (body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
-//                                                  descriptor_extractor_type, keypoint_size, timing)) {
-//                        masks[i].row(0).at<uchar>(j) = 1;
-//                        tot_images_marked++;
-//                    }
-//                }
-//                ++j;
-//            }
-//
-//            // If the model contains all poses then add it to the vector
-//            // otherwise the model is not valid, then exit.
-//            if (body_model.ready())
-//                out_models.push_back(body_model);
-//            else
-//                return false;
-//        }
-//
-//        if (timing.enabled) {
-//            timing.t_tot_load_training_set += ((double)getTickCount() - t0) / getTickFrequency();
-//            timing.n_tot_load_training_set++;
-//        }
-//
-//        return true;
-//    }
-
-    /*
-     * Reads the skeleton from a file and  computes its descriptors.
-     * This is used to compute descriptors of an query image.
-     */
     void read_skel(string descriptor_extractor_type, int keypoint_size, string skel_path, string img_path, Mat &out_image,
-                   vector<KeyPoint> &out_keypoints, vector<float> &out_confidences, Mat &out_descriptors,
+                   vector<cv::KeyPoint> &out_keypoints, vector<float> &out_confidences, Mat &out_descriptors,
                    int &out_pose_side, Timing &timing) {
 
-        double t0 = (timing.enabled) ? getTickCount() : 0;
+        double t0 = (timing.enabled) ? cv::getTickCount() : 0;
 
         // Read the file
         string line;
@@ -633,34 +494,31 @@ namespace multiviewbodymodel {
         descriptor_extractor->compute(out_image, out_keypoints, out_descriptors);
 
         if (timing.enabled) {
-            timing.t_tot_skel_loading += ((double)getTickCount() - t0) / getTickFrequency();
+            timing.t_tot_skel_loading += ((double)cv::getTickCount() - t0) / cv::getTickFrequency();
             timing.n_tot_skel_loading++;
         }
     }
 
-    /**
-     * Return the index of the element in the priority queue whose class is equal to query image one.
-     */
-    template<typename T> int get_rank_index(priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > pq,
-                                            int query_class) {
+    
+
+    template<typename T> int get_rank_index(std::priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > pq,
+                                            int test_class) {
         // Work on a copy
-        priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > scores(pq);
+        std::priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > scores(pq);
 
         // Searching for the element with the same class and get the rank
         for (int i = 0; i < pq.size(); i++)
         {
-            if (scores.top().classIdx == query_class)
+            if (scores.top().classIdx == test_class)
                 return i;
             scores.pop();
         }
         return (int) (pq.size() - 1);
     }
-    template int get_rank_index<float>(priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > pq,
-                                       int query_class);
 
-    /**
-     * Returns the pose side given the skel path.
-     */
+    template int get_rank_index<float>(std::priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > pq,
+                                       int test_class);
+
     int get_pose_side(string path) {
 
         // Read the file
@@ -670,14 +528,14 @@ namespace multiviewbodymodel {
             exit(-1);
         }
 
-        file.seekg(0, ios::end);
+        file.seekg(0, std::ios::end);
         int pos = file.tellg();
         pos-=2;
         file.seekg(pos);
 
         string line;
         getline(file, line);
-        stringstream ss(line);
+        std::stringstream ss(line);
 
 
         int pose_side;
@@ -688,32 +546,21 @@ namespace multiviewbodymodel {
         return pose_side;
     }
 
-    /**
-     * Counts the number of successive images with the same pose side
-     */
-    /**
-     * Example:
-     *  img   |   pose
-     *  1     |   1
-     *  2     |   1
-     *  3     |   1
-     *  4     |   2
-     *  5     |   3
-     *  6     |   3
-     *  7     |   3
-     *  8     |   3
-     *  9     |   4
-     *  10    |   4
-     *
-     *  produce
-     *  [1 3 2 1 3 4 4 2]
-     *  for each element i
-     *  if i is even => pose
-     *  if i is odd => number of successive images with the same pose
-     */
+    // Example:
+    // # img   |   pose
+    //   1     |     1
+    //   2     |     1
+    //   3     |     1
+    //   4     |     2
+    //   5     |     3
+    //   6     |     3
+    //   7     |     3
+    //   8     |     3
+    //   9     |     4
+    //   10    |     4
+    //
+    // produce [1 3 2 1 3 4 4 2]
     void get_poses_map(vector<vector<string> > train_paths, vector<vector<int> > &out_map) {
-
-
         for (int i = 0; i < train_paths.size(); ++i) {
             vector<int> vec;
             int prev = get_pose_side(train_paths[i][0]);
@@ -740,44 +587,48 @@ namespace multiviewbodymodel {
         }
     }
 
-    /**
-     * From a map with the number of successively pose sides, give you
-     * a set of random indeces uniformly distributed.
-     *
-     * Returns the total number of images
-     */
-    int get_rnd_indeces(vector<vector<int> > map, vector<vector<int> > &rnd_indeces) {
+    // Example:
+    // map : [1 3 2 1 3 4 4 2]
+    // start from pose side 1
+    // cur_idx = 0
+    // choose a random value from 0 to 3 => rnd_value = 2
+    // store (cur_idx + rnd_value = 2)
+    // point cur_idx to the next set of images with a different pose side
+    // cur_idx += map[next_odd] => cur_idx = 0 + 3 = 3
+    // repeat
+    int get_rnd_indices(vector<vector<int> > map, vector<vector<int> > &out_rnd_indices) {
 
-        // Total number of images
-        int tot_imgs = 0;
+        // Total number of indices produced
+        int tot_ind = 0;
         for (int i = 0; i < map.size(); ++i) {
-            // for i odd, map[i] has the number of successively pose sides
-            // in the dataset
             vector<int> vec;
-            int current_idx = 0;
-            // Build a vector containing a number of random indeces referred
+            int cur_idx = 0;
+
+            // Build a vector containing a number of random indices referred
             // to images in the dataset
             for (int j = 0; j <= (map[i].size() - 1) / 2; ++j) {
-                RNG rng((uint64) getTickCount());
+                cv::RNG rng((uint64) cv::getTickCount());
+
                 // Random number between [0, map[][])
-                int n = (int)rng.uniform(0., (double)(map[i][2 * j + 1]));
-                vec.push_back(current_idx + n);
-                current_idx += map[i][2 * j + 1];
+                int rnd_value = (int)rng.uniform(0., (double)(map[i][2 * j + 1]));
+                vec.push_back(cur_idx + rnd_value);
+
+                // Point the current index to a new pose side
+                // in the training set: this can be done by adding
+                // the number of images with the current pose side (odd element of the map)
+                cur_idx += map[i][2 * j + 1];
             }
-            tot_imgs += vec.size();
-            rnd_indeces.push_back(vec);
+            tot_ind += vec.size();
+            out_rnd_indices.push_back(vec);
         }
-        return tot_imgs;
+        return tot_ind;
     }
 
-    /**
-     * Results
-     */
     void saveCMC(string path, Mat cmc) {
         assert(cmc.rows == 1);
 
         cout << "Saving CMC...";
-        ofstream file(path);
+        std::ofstream file(path);
         // {(0,23.1)(1,27.5)(2,32)(3,37.8)(4,44.6)(6,61.8)(8,83.8)(10,100)};
         file << "coordinates {";
         for (int j = 0; j < cmc.cols; ++j) {
@@ -788,11 +639,9 @@ namespace multiviewbodymodel {
         cout << "done!" << endl;
     }
 
-    /*
-     * Timing Methods
-     */
+
     void multiviewbodymodel::Timing::write() {
-        FileStorage fs("timing.xml", FileStorage::WRITE);
+        cv::FileStorage fs("timing.xml", cv::FileStorage::WRITE);
         fs << "avgLoadingTrainingSet" << (t_tot_load_training_set / n_tot_load_training_set);
         fs << "avgOneRound" << (t_tot_round / n_rounds);
         fs << "avgDescriptorsComputation" << (t_tot_descriptors / n_tot_descriptors);
@@ -814,7 +663,6 @@ namespace multiviewbodymodel {
     }
 
     void multiviewbodymodel::Timing::show() {
-
         cout << "----------------- PERFORMANCE -----------------" << endl;
         cout << "avgLoadingTrainingSet " << (t_tot_load_training_set / n_rounds);
         cout << "avgOneRound " << (t_tot_round / n_rounds);
@@ -824,31 +672,6 @@ namespace multiviewbodymodel {
         cout << "totMatching " << t_tot_matching;
         cout << "-----------------------------------------------" << endl;
     }
-
-    /**
-     * Logging
-     */
-    template<typename T> void print_list(vector<T> vect) {
-        cout << "[" << vect[0];
-        for (int i = 1; i < vect.size(); ++i) {
-            cout << ", " << vect[i];
-        }
-        cout << "]" << endl;
-    }
-    template void print_list<int>(vector<int> vect);
-    template void print_list<float>(vector<float> vect);
-    template<typename T> void print_list(priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > queue) {
-        RankElement<T> re = queue.top();
-        cout << "[" << re.score << "|" << re.classIdx;
-        queue.pop();
-        while (!queue.empty()) {
-            re = queue.top();
-            cout << ", " << re.score << "|" << re.classIdx;
-            queue.pop();
-        }
-        cout << "]" << endl;
-    }
-    template void print_list<float>(priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > queue);
 }
 
 
