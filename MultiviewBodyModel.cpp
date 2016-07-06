@@ -19,24 +19,22 @@ namespace multiviewbodymodel {
     //                      MultiviewBodyModel methods definitions
     // -------------------------------------------------------------------------
 
-    MultiviewBodyModel::MultiviewBodyModel(int max_poses) {
-        max_poses_ = max_poses;
-    }
+    MultiviewBodyModel::MultiviewBodyModel(int max_poses) { max_poses_ = max_poses; }
 
-    bool MultiviewBodyModel::ReadAndCompute(string path, string img_path, string descriptor_extractor_type, int keypoint_size, Timing &timing) {
-
+    int MultiviewBodyModel::ReadAndCompute(string path, string img_path, string descriptor_extractor_type,
+                                           int keypoint_size, Timing &timing) {
         // Timing
         double ti_model = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
-        // Return value
-        bool value = false;
+        // Returning value
+        int ret = 0;
 
         // Output variables
         vector<cv::KeyPoint> keypoints;
         vector<float> confidences;
         int pose_side;
 
-        // File reading
+        // File reading variables
         string line;
         std::ifstream file(path);
         if (!file.is_open()) {
@@ -44,6 +42,7 @@ namespace multiviewbodymodel {
             exit(-1);
         }
 
+        // Read the file line by line
         int i = 0;
         while (getline(file, line) && i < 15) {
             // Current line
@@ -93,7 +92,9 @@ namespace multiviewbodymodel {
         std::stringstream ss(line);
         ss >> pose_side;
 
-        assert(pose_side <= max_poses_);
+        // Check the pose value is valid
+        if (pose_side > max_poses_)
+            return -1;
 
         // Check if the pose already exists...
         vector<int>::iterator iter = find(pose_side_.begin(), pose_side_.end(), pose_side);
@@ -124,14 +125,15 @@ namespace multiviewbodymodel {
             views_descriptors_.push_back(descriptors);
             views_descriptors_confidences_.push_back(confidences);
 
-            value = true;
+            // The model has successfully loaded the descriptors
+            ret = 1;
         }
         if (timing.enabled) {
             timing.t_tot_model_loading += ((double)cv::getTickCount() - ti_model) / cv::getTickFrequency();
             timing.n_tot_model_loading++;
         }
 
-        return value;
+        return ret;
     }
 
     float MultiviewBodyModel::Match(Mat query_descriptors, vector<float> query_confidences,
@@ -219,7 +221,7 @@ namespace multiviewbodymodel {
 
 
     // -------------------------------------------------------------------------
-    //                      Utility functions definitions
+    //                      Main function definitions
     // -------------------------------------------------------------------------
 
     void Configuration::show() {
@@ -306,9 +308,6 @@ namespace multiviewbodymodel {
         fs.release();
     }
 
-    
-    // Checks if the file node fn is a sequence, used only in parse_args()
-    
     void check_sequence(cv::FileNode fn) {
         if(fn.type() != cv::FileNode::SEQ) {
             cerr << "Configuration file error: not a sequence." << endl;
@@ -376,29 +375,46 @@ namespace multiviewbodymodel {
             // current image
             int j = 0;
             // number of images inserted
-            // [NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0 ]
+            // NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0
             int non_zero_counter = countNonZero(masks[i].row(0));
 
-            int value = 0;
-            int max_size_idx = 0;
 
+            // Look for the list with the maximum number of elements
+            int max_size_idx = 0;
             for (int k = 1; k < train_imgs_paths.size(); ++k) {
                 if (train_imgs_paths[max_size_idx].size() < train_imgs_paths[k].size())
                     max_size_idx = k;
             }
 
+            // Accept poses only with this value in the mask's element
+            int value = 0;
+
+            // The loop continue untill the maximum size mask has only non-zero elements
             while (!body_model.ready() && non_zero_counter <= train_imgs_paths[max_size_idx].size()) {
 
                 // Insert the pose if not present, and remove it from the paths
-                if (masks[i].row(0).at<uchar>(j) == value) {
-                    if (body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
-                                                  descriptor_extractor_type, keypoint_size, timing)) {
-                        masks[i].row(0).at<uchar>(j)++;
+                char *mask_elem = &masks[i].row(0).at<char>(j);
+                if (*mask_elem == value && *mask_elem != -1) {
+
+                    int result = body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
+                                                          descriptor_extractor_type, keypoint_size, timing);
+                    // Check the value returned
+                    // -1 => the pose side is not valid -> mark the relative element -1
+                    //  0 => the pose side already exists -> do nothing
+                    //  1 => the pose side
+                    if (result == 1) {
+                        (*mask_elem)++;
+                        non_zero_counter++;
+                    }
+                    else if (result == -1) {
+                        (*mask_elem) = -1;
                         non_zero_counter++;
                     }
                 }
                 ++j;
 
+                // If the end of the list is reached, start from the beginning
+                // In this way we assure all images in the data set will be considered (even multiple times)
                 if (j == train_imgs_paths[i].size()) {
                     j = 0;
                     value++;
@@ -588,60 +604,50 @@ namespace multiviewbodymodel {
     }
 
     // Example:
-    // map : [1 3 2 1 3 4 4 2]
+    // A map of one person : [1 3 2 1 3 4 4 2] => tot_images = sum of odd elements = 3+1+4+2 = 10 images
     // start from pose side 1
     // cur_idx = 0
-    // choose a random value from 0 to 3 => rnd_value = 2
+    // choose a random value from 0 to 3 => i.e. rnd_value = 2
     // store (cur_idx + rnd_value = 2)
     // point cur_idx to the next set of images with a different pose side
     // cur_idx += map[next_odd] => cur_idx = 0 + 3 = 3
-    // repeat
-    int get_rnd_indices(vector<vector<int> > map, vector<vector<int> > &out_rnd_indices) {
-
+    // repeat for the next person
+    int get_rnd_indices(vector <vector<int> > map, int max_poses, vector <vector<int> > &out_rnd_indices) {
         // Total number of indices produced
         int tot_ind = 0;
+
         for (int i = 0; i < map.size(); ++i) {
             vector<int> vec;
-            int cur_idx = 0;
+            int current_idx = 0;
 
-            // Build a vector containing a number of random indices referred
-            // to images in the dataset
+            // Build a vector containing random valid indices pointing to
+            // the related images in the dataset
             for (int j = 0; j <= (map[i].size() - 1) / 2; ++j) {
-                cv::RNG rng((uint64) cv::getTickCount());
 
-                // Random number between [0, map[][])
-                int rnd_value = (int)rng.uniform(0., (double)(map[i][2 * j + 1]));
-                vec.push_back(cur_idx + rnd_value);
+                // Valid pose side check
+                if (map[i][2 * j] <= max_poses) {
+                    // Random number between [0, map[][])
+                    cv::RNG rng((uint64) cv::getTickCount());
+                    int rnd_value = (int) rng.uniform(0., (double) (map[i][2 * j + 1]));
+
+                    vec.push_back(current_idx + rnd_value);
+                }
 
                 // Point the current index to a new pose side
                 // in the training set: this can be done by adding
                 // the number of images with the current pose side (odd element of the map)
-                cur_idx += map[i][2 * j + 1];
+                current_idx += map[i][2 * j + 1];
             }
+
             tot_ind += vec.size();
             out_rnd_indices.push_back(vec);
         }
+
         return tot_ind;
     }
 
-    void saveCMC(string path, Mat cmc) {
-        assert(cmc.rows == 1);
-
-        cout << "Saving CMC...";
-        std::ofstream file(path);
-        // {(0,23.1)(1,27.5)(2,32)(3,37.8)(4,44.6)(6,61.8)(8,83.8)(10,100)};
-        file << "coordinates {";
-        for (int j = 0; j < cmc.cols; ++j) {
-            file << "(" << j+1 << "," << cmc.at<float>(0, j) * 100 << ")";
-        }
-        file << "};";
-        file.close();
-        cout << "done!" << endl;
-    }
-
-
-    void multiviewbodymodel::Timing::write() {
-        cv::FileStorage fs("timing.xml", cv::FileStorage::WRITE);
+    void multiviewbodymodel::Timing::write(string name) {
+        cv::FileStorage fs(name + ".xml", cv::FileStorage::WRITE);
         fs << "avgLoadingTrainingSet" << (t_tot_load_training_set / n_tot_load_training_set);
         fs << "avgOneRound" << (t_tot_round / n_rounds);
         fs << "avgDescriptorsComputation" << (t_tot_descriptors / n_tot_descriptors);
@@ -671,6 +677,41 @@ namespace multiviewbodymodel {
         cout << "avgSkelLoading " << (t_tot_skel_loading / n_tot_skel_loading);
         cout << "totMatching " << t_tot_matching;
         cout << "-----------------------------------------------" << endl;
+    }
+
+    void saveCMC(string path, Mat cmc) {
+        assert(cmc.rows == 1);
+
+        cout << "Saving CMC...";
+        std::ofstream file(path);
+        // {(0,23.1)(1,27.5)(2,32)(3,37.8)(4,44.6)(6,61.8)(8,83.8)(10,100)};
+        file << "coordinates {";
+        for (int j = 0; j < cmc.cols; ++j) {
+            file << "(" << j+1 << "," << cmc.at<float>(0, j) * 100 << ")";
+        }
+        file << "};";
+        file.close();
+        cout << "done!" << endl;
+    }
+
+    void print_dataset_usage(vector<cv::Mat> masks) {
+        cout << "Dataset usage [%]: ";
+        for (int i = 0; i < masks.size(); ++i) {
+            cout << ((float)countNonZero(masks[i].row(0)) / (float)masks[i].cols) * 100 << "% ";
+        }
+        cout << endl;
+    }
+
+    void save_mask(string d_name, vector<cv::Mat> masks) {
+        std::ofstream file("masks");
+
+        file << "d_name" << endl;
+        for (int i = 0; i < masks.size(); ++i) {
+            assert(masks[i].rows == 1);
+
+            file << masks[i] << endl;
+        }
+        file.close();
     }
 }
 

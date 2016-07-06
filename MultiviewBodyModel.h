@@ -73,7 +73,7 @@ namespace  multiviewbodymodel {
             enabled = true;
         }
         // Writes all stats values in a file named timing.xml
-        void write();
+        void write(string name);
 
         // Show the all the stats value on the console
         void show();
@@ -87,13 +87,21 @@ namespace  multiviewbodymodel {
     class MultiviewBodyModel {
     public:
         // Sets maximum number of poses the model should contain.
-        // The model cannot accept a number of poses greater than this value.
+        // The model cannot accept a poses' value greater than this value.
+        // Example: if the skeletal tracker outputs
+        // 1 for left-side, 2 for right side and 3 for front-side
+        // set max_poses to 3
         MultiviewBodyModel(int max_poses);
 
-        // Loads a model from an image and skel file. It extract each keypoint descriptor
-        // for each pose and store the results in the model.
-        bool ReadAndCompute(string file_path, string img_path, string descriptor_extractor_type,
-                            int keypoint_size, Timing &timing);
+        // Loads a model from an image and skel file.
+        // It extract each keypoint descriptor for each pose and store the results in the model.
+        //
+        // If the pose side value of the skeleton is greater than the max number of poses
+        // it discards the reading and return -1
+        //
+        // If the skeleton is successfully loaded it returns 1, otherwise 0
+        int ReadAndCompute(string file_path, string img_path, string descriptor_extractor_type,
+                           int keypoint_size, Timing &timing);
 
         // Search for the same pose side in the model and computes the match.
         //
@@ -102,8 +110,8 @@ namespace  multiviewbodymodel {
         float Match(cv::Mat query_descriptors, vector<float> query_confidences, int query_pose_side,
                     bool occlusion_search = true);
 
-        // Returns true when all poses in a model are acquired
-        // and the relative descriptors successfully stored
+        // Returns true when all poses in the model are acquired successfully.
+        // This means that the current pose_sides_ vector has size equal to max_poses
         bool ready();
 
     private:
@@ -184,6 +192,7 @@ namespace  multiviewbodymodel {
     // Parse input arguments and initialize the configuration object.
     void parse_args(int argc, char **argv, Configuration &out_conf);
 
+    // Checks if the file node fn is a sequence, used only in parse_args()
     void check_sequence(cv::FileNode fn);
 
     // Creates two vectors containing all the paths to the skeleton and image files grouped by person
@@ -225,9 +234,15 @@ namespace  multiviewbodymodel {
     // where the relative pose side is uniformly distribuited
     //
     // The number returned is the total number of indices produced
-    int get_rnd_indices(vector<vector<int> > map, vector<vector<int> > &out_rnd_indices);
+    int get_rnd_indices(vector <vector<int> > map, int max_poses, vector <vector<int> > &out_rnd_indices);
 
     // Saves the CMC curve in a file
     void saveCMC(string path, cv::Mat cmc);
+
+    // Saves in a file mask.xml the set of mask used during models loading
+    void save_mask(string d_name, vector<cv::Mat> masks);
+
+    void print_dataset_usage(vector<cv::Mat> masks);
+
 }
 #endif // MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H

@@ -10,22 +10,9 @@
 using namespace multiviewbodymodel;
 using std::vector;
 using std::cout;
+using std::cerr;
 using std::endl;
 using cv::string;
-
-
-
-void save_mask(string d_name, vector<cv::Mat> masks) {
-    std::ofstream file("masks");
-
-    file << "d_name" << endl;
-    for (int i = 0; i < masks.size(); ++i) {
-        assert(masks[i].rows == 1);
-
-        file << masks[i] << endl;
-    }
-    file.close();
-}
 
 int main(int argc, char** argv)
 {
@@ -46,8 +33,7 @@ int main(int argc, char** argv)
     vector<vector<string> > train_skels_paths;
     load_train_paths(conf, train_skels_paths, train_imgs_paths);
 
-
-    // Used for performace logging
+    // Used for performance logging
     Timing timing;
     timing.enable();
 
@@ -57,13 +43,13 @@ int main(int argc, char** argv)
     // Initial timing variable
     double t0 = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
-    // Generate random indices for testing
+    // Generate a map for the current dataset
     vector<vector<int> > map;
     get_poses_map(train_skels_paths, map);
 
-    // Choose a random number of images uniformly
-    vector<vector<int> > indices;
-    int tot_test_imgs = get_rnd_indices(map, indices);
+    // Choose a random number of test images uniformly
+    vector<vector<int> > rnd_indices;
+    int tot_test_imgs = get_rnd_indices(map, conf.max_poses, rnd_indices);
 
     for (int d = 0; d < conf.descriptor_extractor_type.size(); ++d) {
 
@@ -76,8 +62,6 @@ int main(int argc, char** argv)
             masks.push_back(mask);
         }
 
-
-
         // Cumulative Matching Characteristic curve:
         // contains the average person re-identification rate
         cv::Mat CMC;
@@ -89,40 +73,31 @@ int main(int argc, char** argv)
         while(load_models(conf.descriptor_extractor_type[d], conf.keypoint_size, conf.max_poses,
                           masks, train_skels_paths, train_imgs_paths, models, timing)) {
 
-            if (rounds % 10 == 0)
-            {
-                for (int i = 0; i < masks.size(); ++i) {
-                    cout << "[" << (int)masks[i].at<uchar>(0, 0);
-                    for (int j = 1; j < masks[i].cols; ++j) {
-                        cout << " " << (int)masks[i].at<char>(0, j);
-                    }
-                    cout << "]" << endl;
-                }
-            }
-
             cout << "----------- " <<  conf.descriptor_extractor_type[d] <<
                     " Models loaded, rounds: " << rounds << " ---------" << endl;
+
             // Rates of the current test image
             cv::Mat rates;
             rates = cv::Mat::zeros(1, static_cast<int>(conf.persons_names.size()), CV_32F);
 
             // Match
-            for (int current_class = 0; current_class < indices.size(); ++current_class) {
-                for (int i = 0; i < indices[current_class].size(); ++i) {
-                    // Testing variables
+            for (int current_class = 0; current_class < rnd_indices.size(); ++current_class) {
+                for (int i = 0; i < rnd_indices[current_class].size(); ++i) {
+                    // Required variables
                     cv::Mat test_image;
                     cv::Mat test_descriptors;
                     vector<cv::KeyPoint> test_keypoints;
                     vector<float> test_confidences;
                     int test_pose_side;
 
-                    // Loading the test frame skeleton
+                    // Load the test frame skeleton
                     read_skel(conf.descriptor_extractor_type[d], conf.keypoint_size,
-                              train_skels_paths[current_class][i], train_imgs_paths[current_class][i],
+                              train_skels_paths[current_class][rnd_indices[current_class][i]],
+                              train_imgs_paths[current_class][rnd_indices[current_class][i]],
                               test_image, test_keypoints, test_confidences, test_descriptors, test_pose_side, timing);
 
-                    // Compute the match score between the query image and each model loaded
-                    // the result is inserted into the priority queue "scores"
+                    // Compute the matching score between the test image and each model
+                    // the result is inserted into the priority queue named "scores"
                     std::priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > scores;
                     for (int j = 0; j < models.size(); ++j) {
                         RankElement<float> rank_element;
@@ -137,6 +112,7 @@ int main(int argc, char** argv)
                     for (int k = rank_idx; k < rates.cols; ++k) {
                         rates.at<float>(0, k)++;
                     }
+
                 }
             }
 
@@ -172,35 +148,27 @@ int main(int argc, char** argv)
             timing.t_descriptor_names.push_back(timing.t_tot_matching);
         }
 
-
-
         // Compute the average
-        CMC = CMC / (rounds - 1);
+        CMC /= (rounds - 1);
         cout << "CMC: " << CMC << endl;
 
         // Save the results
         std::stringstream ss;
-        ss << "../CMC_" << conf.descriptor_extractor_type[d] << "_RND" << endl;
+        ss << "../CMC_" << conf.descriptor_extractor_type[d] << "_" << conf.max_poses << "_RND" << endl;
         saveCMC(ss.str(), CMC);
+        ss.str("");
+
+        ss << "../TIME_" << conf.descriptor_extractor_type[d] << "_" << conf.max_poses << "_RND" << endl;
+        if (timing.enabled)
+            timing.write(ss.str());
+        ss.str("");
+
+        print_dataset_usage(masks);
 
         rounds = 1;
+    }
 
-        // Saving the mask
-        save_mask(conf.descriptor_extractor_type[d], masks);
-        cout << "Dataset %" << endl;
-        for (cv::Mat mask : masks) {
-            cout << (float)countNonZero(mask.row(0)) / (float)mask.cols << " ";
-        }
-        cout << endl;
 
-        for(cv::Mat mask : masks) {
-            cout << mask << endl;
-        }
-
-    } // end-for
-
-    if (timing.enabled)
-        timing.write();
 
     return 0;
 }
