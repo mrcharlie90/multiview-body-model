@@ -16,9 +16,11 @@
 #include <vector>
 #include <queue>
 #include <numeric>
+
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
 #include <opencv2/nonfree/nonfree.hpp>
+#include <opencv/cxcore.h>
 
 namespace  multiviewbodymodel {
     using std::vector;
@@ -99,15 +101,25 @@ namespace  multiviewbodymodel {
         // If the pose side value of the skeleton is greater than the max number of poses
         // it discards the reading and return -1
         //
-        // If the skeleton is successfully loaded it returns 1, otherwise 0
-        int ReadAndCompute(string file_path, string img_path, string descriptor_extractor_type,
-                           int keypoint_size, Timing &timing);
+        // If the pose side is already loaded it returns 0, otherwise the pose is loaded and the value
+        // returned is 1.
+        int ReadAndCompute(const string &skel_path, const string &img_path,
+                           const string &descriptor_extractor_type, int keypoint_size, Timing &timing);
+
+        // Replace one skeleton pose side inside a model.
+        //
+        // Returns
+        //  -1 if the the pose value is greater than the maximum possible value
+        //   0 if the pose doesn't exist, then it added to the model
+        //   1 if the pose already exists, then it is replaced
+        int Replace(const string &skel_path, const cv::Mat &image, const string &descriptor_extractor_type,
+                    int keypoint_size);
 
         // Search for the same pose side in the model and computes the match.
         //
         // If occlusion_search is true (by default), a keypoint descriptor which is occluded is match 
         // with a descriptor in another view (the first one which has the descriptor visible).
-        float Match(cv::Mat query_descriptors, vector<float> query_confidences, int query_pose_side,
+        float Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side,
                     bool occlusion_search = true);
 
         // Returns true when all poses in the model are acquired successfully.
@@ -126,12 +138,14 @@ namespace  multiviewbodymodel {
         // 2. one keypoint occluded and the other visible => mask(i,j) = 1 -> Find the keypoint
         // occluded in the other views
         // 3. both keypoints visible => mask(i,j) = 2 -> Compute the distance between the keypoints
-        void create_confidence_mask(vector<float> &query_confidences, vector<float> &train_confidences,
+        void create_confidence_mask(const vector<float> &query_confidences, const vector<float> &train_confidences,
                                     vector<char> &out_mask);
 
-        // Used in the matching phase when one keypoint is occluded and the other
+        // Used in the matching function when one keypoint is occluded and the other
         // is visible.
+        // Returns true if a non-occluded keypoint's descriptors are found, false otherwise
         bool  get_descriptor_occluded(int keypoint_index, cv::Mat &descriptor_occluded);
+
 
         // The maximum number of poses the model should accept
         int max_poses_;
@@ -153,9 +167,15 @@ namespace  multiviewbodymodel {
         vector<vector<float> > views_descriptors_confidences_;
     };
 
-    // -------------------------------------------------------------------------
-    //                      Utility functions declarations
-    // -------------------------------------------------------------------------
+    // ------------------------------------------------------------------------- //
+    //                           Functions declarations                          //
+    // ------------------------------------------------------------------------- //
+
+    // Read the skel file path:
+    // returns a vector of keypoints, a vector of confidences and the pose side of the skeleton
+    void read_skel_file(const string &skel_path, int keypoint_size, vector<cv::KeyPoint> &out_keypoints,
+                        vector<float> &out_confidences, int &out_pose_side);
+
 
     // Element used for storing the ground truth class of the current frame with
     // the relative score obtained from the matching function.
@@ -184,6 +204,7 @@ namespace  multiviewbodymodel {
         // From the command line
         vector<string> descriptor_extractor_type;
         int keypoint_size;
+        bool occlusion_search;
 
         // Shows the parameters loaded from the config.xml file
         void show();
@@ -196,10 +217,11 @@ namespace  multiviewbodymodel {
     void check_sequence(cv::FileNode fn);
 
     // Creates two vectors containing all the paths to the skeleton and image files grouped by person
-    void load_train_paths(string main_path, vector<string> persons_names, vector<string> views_names,
-                          cv::Mat num_images,
+    void load_train_paths(const string &main_path, const vector <string> &persons_names,
+                          const vector <string> &views_names, const cv::Mat &num_images,
                           vector<vector<string> > &out_imgs_paths, vector<vector<string> > &out_skel_paths);
-    void load_train_paths(Configuration conf, vector<vector<string> > &out_skels_paths,
+
+    void load_train_paths(const Configuration &conf, vector<vector<string> > &out_skels_paths,
                           vector<vector<string> > &out_imgs_paths);
 
     // Loads one model from images chosen sequentially in the training set
@@ -207,15 +229,15 @@ namespace  multiviewbodymodel {
     // One mask's element masks[i].col(j) is a counter which tells how many times the relative image is considered
     //
     // out_models is a vector of body models with all poses loaded and the relative descriptors computed.
-    bool load_models(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<cv::Mat> &masks,
-                     vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-                     vector<MultiviewBodyModel> &out_models, Timing &timing);
+    bool load_models(const vector <vector<string> > &train_skels_paths, const vector <vector<string> > &train_imgs_paths,
+                     const string &descriptor_extractor_type, int keypoint_size, int max_poses,
+                     vector <cv::Mat> &masks, vector <MultiviewBodyModel> &out_models, Timing &timing);
 
     // Loads one image skeleton, used in the testing phase to load the test image
     // Returns the keypoints and confidences read from the skel file and the descriptors computed from the keypoints pose a
-    void read_skel(string descriptor_extractor_type, int keypoint_size, string skel_path, string img_path,
-                   cv::Mat &out_image, vector<cv::KeyPoint> &out_keypoints, vector<float> &out_confidences,
-                   cv::Mat &out_descriptors, int &out_pose_side, Timing &timing);
+    void load_test_skel(const string &skel_path, const string &img_path, const string &descriptor_extractor_type,
+                        int keypoint_size, cv::Mat &out_image, vector <cv::KeyPoint> &out_keypoints,
+                        vector<float> &out_confidences, cv::Mat &out_descriptors, int &out_pose_side, Timing &timing);
 
     // Returns the index in the queue of the element with the class equal to test_class
     template<typename T>

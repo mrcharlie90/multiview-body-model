@@ -15,13 +15,14 @@ namespace multiviewbodymodel {
     using cv::string;
     using cv::Mat;
 
-    // -------------------------------------------------------------------------
-    //                      MultiviewBodyModel methods definitions
-    // -------------------------------------------------------------------------
+    // ------------------------------------------------------------------------- //
+    //                      MultiviewBodyModel methods definitions               //
+    // ------------------------------------------------------------------------- //
 
     MultiviewBodyModel::MultiviewBodyModel(int max_poses) { max_poses_ = max_poses; }
 
-    int MultiviewBodyModel::ReadAndCompute(string path, string img_path, string descriptor_extractor_type,
+    int MultiviewBodyModel::ReadAndCompute(const string &skel_path, const string &img_path,
+                                           const string &descriptor_extractor_type,
                                            int keypoint_size, Timing &timing) {
         // Timing
         double ti_model = (timing.enabled) ? (double)cv::getTickCount() : 0;
@@ -34,84 +35,31 @@ namespace multiviewbodymodel {
         vector<float> confidences;
         int pose_side;
 
-        // File reading variables
-        string line;
-        std::ifstream file(path);
-        if (!file.is_open()) {
-            std::cerr << "ReadAndCompute: " << path << "Invalid file name." << std::endl;
-            exit(-1);
-        }
+        read_skel_file(skel_path, keypoint_size, keypoints,
+                       confidences, pose_side);
 
-        // Read the file line by line
-        int i = 0;
-        while (getline(file, line) && i < 15) {
-            // Current line
-            std::istringstream iss(line);
 
-            int value_type = 0; // 0:x-pos, 1:y-pos, 2:confidence
-            float x = 0.0f; // x-position
-            float y = 0.0f; // y-position
 
-            string field;
-            while (getline(iss, field, ',')) {
-                std::stringstream ss(field);
-                switch (value_type) {
-                    case 0:
-                        // Catch the x-position
-                        ss >> x;
-                        ++value_type;
-                        break;
-                    case 1:
-                        // Catch the y-position
-                        ss >> y;
-                        ++value_type;
-                        break;
-                    case 2:
-                        // Save the keypoint...
-                        cv::KeyPoint keypoint(cv::Point2f(x, y), keypoint_size);
-                        keypoints.push_back(keypoint);
-
-                        // ...and the confidence
-                        float conf;
-                        ss >> conf;
-                        if (conf < 0)
-                            confidences.push_back(0);
-                        else
-                            confidences.push_back(conf);
-
-                        // Reset to 0 for the next keypoint
-                        value_type %= 2;
-                        break;
-                }
-            }
-            ++i;
-        }
-        views_keypoints_.push_back(keypoints);
-
-        // Last line contains the pose side
-        std::stringstream ss(line);
-        ss >> pose_side;
-
-        // Check the pose value is valid
+        // Check if the pose value is valid
         if (pose_side > max_poses_)
             return -1;
 
         // Check if the pose already exists...
         vector<int>::iterator iter = find(pose_side_.begin(), pose_side_.end(), pose_side);
 
-        // ...if so, populate the body model with the data, otherwise discard the data
+        // ...if so, fill the body model with data, otherwise do not consider this skeleton
         if (iter == pose_side_.end()) {
             // Read image
             cv::Mat img = cv::imread(img_path);
             if (!img.data) {
-                std::cerr << "ReadAndCompute:" << img_path << "Invalid image file." << std::endl;
+                cerr << "ReadAndCompute:" << img_path << "Invalid image file." << endl;
                 exit(0);
             }
-            views_images_.push_back(img);
 
-            // Compute descriptors for this view
+            // Log time for computing descriptors
             double ti_desc = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
+            // Compute descriptors for this view
             cv::Mat descriptors;
             cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
             descriptor_extractor->compute(img, keypoints, descriptors);
@@ -121,13 +69,17 @@ namespace multiviewbodymodel {
                 timing.n_tot_descriptors++;
             }
 
+            // Load data into the model
+            views_images_.push_back(img);
+            views_keypoints_.push_back(keypoints);
             pose_side_.push_back(pose_side);
             views_descriptors_.push_back(descriptors);
             views_descriptors_confidences_.push_back(confidences);
 
-            // The model has successfully loaded the descriptors
+            // The model has loaded the descriptors successfully
             ret = 1;
         }
+
         if (timing.enabled) {
             timing.t_tot_model_loading += ((double)cv::getTickCount() - ti_model) / cv::getTickFrequency();
             timing.n_tot_model_loading++;
@@ -136,41 +88,99 @@ namespace multiviewbodymodel {
         return ret;
     }
 
-    float MultiviewBodyModel::Match(Mat query_descriptors, vector<float> query_confidences,
-                                    int query_pose_side, bool occlusion_search) {
-        // Checking the model is ready
-        assert(this->ready());
-        assert(query_confidences.size() == query_descriptors.rows);
+    int MultiviewBodyModel::Replace(const string &skel_path, const Mat &img, const string &descriptor_extractor_type,
+                                    int keypoint_size) {
+        // Returning value
+        int ret = 0;
 
-        // Search for the corresponding pose side
+        // Required variables
+        vector<cv::KeyPoint> keypoints;
+        vector<float> confidences;
+        int pose_side;
+
+        read_skel_file(skel_path, keypoint_size, keypoints, confidences, pose_side);
+
+        // Check if the pose value is valid
+        if (pose_side > max_poses_)
+            return -1;
+
+        // Check if the pose already exists...
+        vector<int>::iterator iter = find(pose_side_.begin(), pose_side_.end(), pose_side);
+        int index = static_cast<int>(iter - pose_side_.begin());
+
+        // Compute descriptors for this view
+        cv::Mat descriptors;
+        cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
+        descriptor_extractor->compute(img, keypoints, descriptors);
+
+        // ...if so, populate the body model with the data, otherwise discard the data
+        if (iter != pose_side_.end()) {
+
+            // Read image
+            assert(img.data);
+
+            // Update the model
+            views_images_[index] = img;
+            pose_side_[index] = pose_side;
+            views_descriptors_[index] = descriptors;
+            views_keypoints_[index] = keypoints;
+            views_descriptors_confidences_[index] = confidences;
+
+            // The model has replaced the descriptors successfully
+            ret = 1;
+        }
+        else {
+            // Add it to the model, otherwise
+            views_images_.push_back(img);
+            views_keypoints_.push_back(keypoints);
+            pose_side_.push_back(pose_side);
+            views_descriptors_.push_back(descriptors);
+            views_descriptors_confidences_.push_back(confidences);
+
+            // The model has loaded the descriptors successfully
+            ret = 0;
+        }
+
+        return ret;
+    }
+
+    float MultiviewBodyModel::Match(const Mat &test_descriptors, const vector<float> &test_confidences,
+                                    int test_pose_side, bool occlusion_search) {
+        // Check the model is ready
+        assert(this->ready());
+
+        // Test skeleton check
+        assert(test_confidences.size() == test_descriptors.rows);
+        assert(test_pose_side > 0);
+
+        // Search for the corresponding pose side in this model
         for (int i = 0; i < pose_side_.size(); ++i) {
-            if (pose_side_[i] == query_pose_side) {
+            if (pose_side_[i] == test_pose_side) {
                 // Do the match, consindering the keypoint occlusion (by using confidences)
                 vector<char> confidence_mask;
 
-                // Mask used for defining the operation between two keypoints occluded or semi-occluded.
-                create_confidence_mask(query_confidences, views_descriptors_confidences_[i], confidence_mask);
+                // Mask used for defining the operation between keypoints occlusion cases
+                create_confidence_mask(test_confidences, views_descriptors_confidences_[i], confidence_mask);
 
-                // Compute the average of the euclidean distances obtained from each keypoint
+                // Compute the average of the euclidean distances obtained among keypoints
                 float average_distance = 0.0;
                 int descriptors_count = 0;
                 for (int k = 0; k < views_descriptors_[i].rows; ++k) {
+                    // Getting the operation to perform by the confidence mask
                     char operation = confidence_mask[k];
 
-                    // If the occlusion_search flag is true, look
+                    // If the occlusion_search flag is true, look for a non-occluded descriptors
+                    // in the other pose sides.
                     Mat descriptor_occluded;
                     double dist;
-                    if (operation == 1 && occlusion_search &&
-                        get_descriptor_occluded(k, descriptor_occluded)) {
-
-
+                    if (operation == 1 && occlusion_search && get_descriptor_occluded(k, descriptor_occluded)) {
                         // A descriptor is found, so compute the distance
-                        dist = norm(query_descriptors.row(k), descriptor_occluded);
+                        dist = norm(test_descriptors.row(k), descriptor_occluded);
                         average_distance += dist;
                         descriptors_count++;
                     }
                     else if (operation == 2) {
-                        dist = norm(query_descriptors.row(k), views_descriptors_[i].row(k));
+                        dist = norm(test_descriptors.row(k), views_descriptors_[i].row(k));
                         average_distance += dist;
                         descriptors_count++;
                     }
@@ -182,11 +192,10 @@ namespace multiviewbodymodel {
         return -1;
     }
 
-    bool MultiviewBodyModel::ready() {
-        return (pose_side_.size() == max_poses_);
-    }
+    bool MultiviewBodyModel::ready() { return pose_side_.size() == max_poses_; }
 
-    void MultiviewBodyModel::create_confidence_mask(vector<float> &query_confidences, vector<float> &train_confidences,
+    void MultiviewBodyModel::create_confidence_mask(const vector<float> &query_confidences,
+                                                    const vector<float> &train_confidences,
                                                     vector<char> &out_mask) {
 
         assert(query_confidences.size() == train_confidences.size());
@@ -220,238 +229,25 @@ namespace multiviewbodymodel {
     }
 
 
-    // -------------------------------------------------------------------------
-    //                      Main function definitions
-    // -------------------------------------------------------------------------
 
-    void Configuration::show() {
-        cout << "---------------- CONFIGURATION --------------------------------" << endl << endl;
-        cout << "MAIN PATH: " << main_path << endl;
-        cout << "PERSONS NAMES: " << endl;
-        cout << "[" << persons_names[0];
-        for (int k = 1; k < persons_names.size(); ++k) {
-            cout << ", " << persons_names[k];
-            if (k % 2 == 0 && k < persons_names.size() - 1)
-                cout << endl;
-        }
-        cout << "]" << endl;
-        cout << "VIEWS NAMES: ";
-        cout << "[" << views_names[0];
-        for (int j = 1; j < views_names.size(); ++j) {
-            cout << ", " << views_names[j];
-        }
-        cout << "]" << endl;
-        cout << "MAX POSES: " << max_poses << endl;
-        cout << "NUMBER OF IMAGES: ";
-        cout << "[" << (int)num_images.at<uchar>(0, 0);
-        for (int i = 1; i < num_images.rows; i++) {
-            cout << ", " << (int)num_images.at<uchar>(i, 0);
-        }
-        cout << "]" << endl << endl;
-        cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
-    }
+    // ------------------------------------------------------------------------- //
+    //                           Function definitions                            //
+    // ------------------------------------------------------------------------- //
 
-    void parse_args(int argc, char **argv, Configuration &out_conf) {
-        std::stringstream ss;
-
-        for (int i = 1; i < argc; ++i) {
-            if (i + 1 != argc) {
-                if (strcmp(argv[i], "-c") == 0) {
-                    ss << argv[++i];
-                    out_conf.conf_file_path = ss.str();
-                    ss.str("");
-                }
-                else if (strcmp(argv[i], "-d") == 0) {
-                    if (strcmp(argv[i+1], "all") == 0) {
-                        out_conf.descriptor_extractor_type.push_back("SURF");
-                        out_conf.descriptor_extractor_type.push_back("SIFT");
-                        out_conf.descriptor_extractor_type.push_back("BRIEF");
-                        out_conf.descriptor_extractor_type.push_back("BRISK");
-                        out_conf.descriptor_extractor_type.push_back("ORB");
-                        out_conf.descriptor_extractor_type.push_back("FREAK");
-                    }
-                    else {
-                        ss << argv[++i];
-                        out_conf.descriptor_extractor_type.push_back(ss.str());
-                        ss.str("");
-                    }
-
-                }
-                else if (strcmp(argv[i], "-k") == 0) {
-                    out_conf.keypoint_size = atoi(argv[++i]);
-                }
-            }
-        }
-
-        cv::FileStorage fs(out_conf.conf_file_path, cv::FileStorage::READ);
-        fs["MainPath"] >> out_conf.main_path;
-
-
-        cv::FileNode pn = fs["PersonNames"];
-        check_sequence(pn);
-        for (cv::FileNodeIterator it = pn.begin(); it != pn.end(); ++it)
-            out_conf.persons_names.push_back((string)*it);
-
-        cv::FileNode wn = fs["ViewNames"];
-        check_sequence(wn);
-        for (cv::FileNodeIterator it = wn.begin(); it != wn.end(); ++it)
-            out_conf.views_names.push_back((string)*it);
-
-        fs["NumImages"] >> out_conf.num_images;
-
-        if (out_conf.persons_names.size() != out_conf.num_images.rows) {
-            cerr << "#persons != #num_images, check the configuration file!" << endl;
-            exit(-1);
-        }
-
-        fs["MaxPoses"] >> out_conf.max_poses;
-        fs.release();
-    }
-
-    void check_sequence(cv::FileNode fn) {
-        if(fn.type() != cv::FileNode::SEQ) {
-            cerr << "Configuration file error: not a sequence." << endl;
-            exit(-1);
-        }
-    }
-
-    void load_train_paths(string main_path, vector<string> persons_names, vector<string> views_names,
-                          Mat num_images, vector<vector<string> > &skels_paths, vector<vector<string> > &imgs_paths) {
-
-        assert(persons_names.size() == num_images.rows);
-
-        std::stringstream ss_imgs, ss_skels;
-
-        for (int i = 0; i < persons_names.size(); ++i) {
-            vector<string> imgs_path;
-            vector<string> skels_path;
-            for (int j = 0; j < views_names.size(); ++j) {
-                for (int k = 0; k <= num_images.at<uchar>(i, 0); ++k) {
-                    if (k < 10) {
-                        ss_imgs << main_path << persons_names[i] << "/" << views_names[j] << "0000" << k << ".png";
-                        ss_skels << main_path << persons_names[i] << "/" << views_names[j] << "0000" << k << "_skel.txt";
-                    }
-                    else {
-                        ss_imgs << main_path << persons_names[i] << "/" << views_names[j] << "000" << k << ".png";
-                        ss_skels << main_path << persons_names[i] << "/" << views_names[j] << "000" << k << "_skel.txt";
-                    }
-
-                    imgs_path.push_back(ss_imgs.str());
-                    skels_path.push_back(ss_skels.str());
-
-                    ss_imgs.str("");
-                    ss_skels.str("");
-                }
-            }
-
-            imgs_paths.push_back(imgs_path);
-            skels_paths.push_back(skels_path);
-        }
-    }
-
-    void load_train_paths(Configuration conf, vector<vector<string> > &out_skels_paths,
-                          vector<vector<string> > &out_imgs_paths) {
-        load_train_paths(conf.main_path, conf.persons_names, conf.views_names, conf.num_images, out_skels_paths, out_imgs_paths);
-    }
-
-    bool load_models(string descriptor_extractor_type, int keypoint_size, int max_poses, vector<Mat> &masks,
-                     vector<vector<string> > &train_skels_paths, vector<vector<string> > &train_imgs_paths,
-                     vector<MultiviewBodyModel> &out_models, Timing &timing) {
-        // Timing
-        double t0 = (timing.enabled) ? (double)cv::getTickCount() : 0;
-
-        // Checking dimensions
-        assert(train_imgs_paths.size() == train_skels_paths.size());
-
-
-        // train_skels_paths.size() = the number of people
-        for (int i = 0; i < train_skels_paths.size(); ++i) {
-
-            // Checking dimensions
-            assert(train_imgs_paths[i].size() == train_skels_paths[i].size());
-
-            MultiviewBodyModel body_model(max_poses);
-
-            // current image
-            int j = 0;
-            // number of images inserted
-            // NOTE: image already considered for the matching then masks[i].at(j, 0) = 1 , otherwise 0
-            int non_zero_counter = countNonZero(masks[i].row(0));
-
-
-            // Look for the list with the maximum number of elements
-            int max_size_idx = 0;
-            for (int k = 1; k < train_imgs_paths.size(); ++k) {
-                if (train_imgs_paths[max_size_idx].size() < train_imgs_paths[k].size())
-                    max_size_idx = k;
-            }
-
-            // Accept poses only with this value in the mask's element
-            int value = 0;
-
-            // The loop continue untill the maximum size mask has only non-zero elements
-            while (!body_model.ready() && non_zero_counter <= train_imgs_paths[max_size_idx].size()) {
-
-                // Insert the pose if not present, and remove it from the paths
-                char *mask_elem = &masks[i].row(0).at<char>(j);
-                if (*mask_elem == value && *mask_elem != -1) {
-
-                    int result = body_model.ReadAndCompute(train_skels_paths[i][j], train_imgs_paths[i][j],
-                                                          descriptor_extractor_type, keypoint_size, timing);
-                    // Check the value returned
-                    // -1 => the pose side is not valid -> mark the relative element -1
-                    //  0 => the pose side already exists -> do nothing
-                    //  1 => the pose side
-                    if (result == 1) {
-                        (*mask_elem)++;
-                        non_zero_counter++;
-                    }
-                    else if (result == -1) {
-                        (*mask_elem) = -1;
-                        non_zero_counter++;
-                    }
-                }
-                ++j;
-
-                // If the end of the list is reached, start from the beginning
-                // In this way we assure all images in the data set will be considered (even multiple times)
-                if (j == train_imgs_paths[i].size()) {
-                    j = 0;
-                    value++;
-                }
-            }
-
-            // If the model contains all poses then add it to the vector
-            // otherwise the model is not valid, then exit.
-            if (body_model.ready())
-                out_models.push_back(body_model);
-            else
-                return false;
-        }
-
-        if (timing.enabled) {
-            timing.t_tot_load_training_set += ((double)cv::getTickCount() - t0) / cv::getTickFrequency();
-            timing.n_tot_load_training_set++;
-        }
-
-        return true;
-    }
-
-    void read_skel(string descriptor_extractor_type, int keypoint_size, string skel_path, string img_path, Mat &out_image,
-                   vector<cv::KeyPoint> &out_keypoints, vector<float> &out_confidences, Mat &out_descriptors,
-                   int &out_pose_side, Timing &timing) {
-
-        double t0 = (timing.enabled) ? cv::getTickCount() : 0;
-
-        // Read the file
+    void read_skel_file(const string &skel_path, int keypoint_size,
+                        vector<cv::KeyPoint> &out_keypoints,
+                        vector<float> &out_confidences, int &out_pose_side) {
+        // File reading variables
         string line;
         std::ifstream file(skel_path);
         if (!file.is_open()) {
-            std::cerr << "read_skel: " << skel_path << "Invalid file name." << std::endl;
+            std::cerr << "ReadAndCompute: " << skel_path << "Invalid file name." << std::endl;
             exit(-1);
         }
 
+        // Read the file line by line
         int i = 0;
+
         while (getline(file, line) && i < 15) {
             // Current line
             std::istringstream iss(line);
@@ -487,22 +283,255 @@ namespace multiviewbodymodel {
                         else
                             out_confidences.push_back(conf);
 
-                        // Reset to 0 and go to the next keypoint
+                        // Reset to 0 for the next keypoint
                         value_type %= 2;
                         break;
                 }
             }
             ++i;
         }
-
         // Last line contains the pose side
         std::stringstream ss(line);
         ss >> out_pose_side;
+    }
+
+    void Configuration::show() {
+        cout << "---------------- CONFIGURATION --------------------------------" << endl << endl;
+        cout << "MAIN PATH: " << main_path << endl;
+        cout << "PERSONS NAMES: " << endl;
+        cout << "[" << persons_names[0];
+        for (int k = 1; k < persons_names.size(); ++k) {
+            cout << ", " << persons_names[k];
+            if (k % 2 == 0 && k < persons_names.size() - 1)
+                cout << endl;
+        }
+        cout << "]" << endl;
+        cout << "VIEWS NAMES: ";
+        cout << "[" << views_names[0];
+        for (int j = 1; j < views_names.size(); ++j) {
+            cout << ", " << views_names[j];
+        }
+        cout << "]" << endl;
+        cout << "NUMBER OF IMAGES: ";
+        cout << "[" << (int)num_images.at<uchar>(0, 0);
+        for (int i = 1; i < num_images.rows; i++) {
+            cout << ", " << (int)num_images.at<uchar>(i, 0);
+        }
+        cout << "]" << endl << endl;
+        cout << "DESCRIPTOR TYPE: " <<
+                  (descriptor_extractor_type.size() > 1 ? "all" : descriptor_extractor_type[0]) << endl;
+        cout << "KEYPOINT SIZE: " << keypoint_size << endl;
+        cout << "OCCLUSION SEARCH: " << (occlusion_search ? "T" : "F") << endl;
+        cout << "MAX POSES: " << max_poses << endl;
+        cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
+    }
+
+    void parse_args(int argc, char **argv, Configuration &out_conf) {
+        std::stringstream ss;
+
+        for (int i = 1; i < argc; ++i) {
+            if (i + 1 != argc) {
+                if (strcmp(argv[i], "-c") == 0) {
+                    ss << argv[++i];
+                    out_conf.conf_file_path = ss.str();
+                    ss.str("");
+                }
+                else if (strcmp(argv[i], "-d") == 0) {
+                    if (strcmp(argv[i+1], "all") == 0) {
+                        out_conf.descriptor_extractor_type.push_back("SURF");
+                        out_conf.descriptor_extractor_type.push_back("SIFT");
+                        out_conf.descriptor_extractor_type.push_back("BRIEF");
+                        out_conf.descriptor_extractor_type.push_back("BRISK");
+                        out_conf.descriptor_extractor_type.push_back("ORB");
+                        out_conf.descriptor_extractor_type.push_back("FREAK");
+                    }
+                    else {
+                        ss << argv[++i];
+                        out_conf.descriptor_extractor_type.push_back(ss.str());
+                        ss.str("");
+                    }
+                }
+                else if (strcmp(argv[i], "-k") == 0) {
+                    out_conf.keypoint_size = atoi(argv[++i]);
+                }
+                else if (strcmp(argv[i], "-n") == 0) {
+                    out_conf.max_poses = atoi(argv[++i]);
+                }
+            }
+        }
+
+        cv::FileStorage fs(out_conf.conf_file_path, cv::FileStorage::READ);
+        fs["MainPath"] >> out_conf.main_path;
+
+
+        cv::FileNode pn = fs["PersonNames"];
+        check_sequence(pn);
+        for (cv::FileNodeIterator it = pn.begin(); it != pn.end(); ++it)
+            out_conf.persons_names.push_back((string)*it);
+
+        cv::FileNode wn = fs["ViewNames"];
+        check_sequence(wn);
+        for (cv::FileNodeIterator it = wn.begin(); it != wn.end(); ++it)
+            out_conf.views_names.push_back((string)*it);
+
+        fs["NumImages"] >> out_conf.num_images;
+
+        if (out_conf.persons_names.size() != out_conf.num_images.rows) {
+            cerr << "#persons != #num_images, check the configuration file!" << endl;
+            exit(-1);
+        }
+
+        fs["OcclusionSearch"] >> out_conf.occlusion_search;
+        fs.release();
+    }
+
+    void check_sequence(cv::FileNode fn) {
+        if(fn.type() != cv::FileNode::SEQ) {
+            cerr << "Configuration file error: not a sequence." << endl;
+            exit(-1);
+        }
+    }
+
+    void load_train_paths(const string &main_path, const vector<string> &persons_names,
+                          const vector <string> &views_names, const Mat &num_images,
+                          vector<vector<string> > &out_skels_paths, vector<vector<string> > &out_imgs_paths) {
+
+        assert(persons_names.size() == num_images.rows);
+
+        std::stringstream ss_imgs, ss_skels;
+
+        vector<string> imgs_paths;
+        vector<string> skels_paths;
+        for (int i = 0; i < persons_names.size(); ++i) {
+
+            for (int j = 0; j < views_names.size(); ++j) {
+                for (int k = 0; k <= num_images.at<uchar>(i, 0); ++k) {
+                    if (k < 10) {
+                        ss_imgs << main_path << persons_names[i] << "/" << views_names[j] << "0000" << k << ".png";
+                        ss_skels << main_path << persons_names[i] << "/" << views_names[j] << "0000" << k << "_skel.txt";
+                    }
+                    else {
+                        ss_imgs << main_path << persons_names[i] << "/" << views_names[j] << "000" << k << ".png";
+                        ss_skels << main_path << persons_names[i] << "/" << views_names[j] << "000" << k << "_skel.txt";
+                    }
+
+                    imgs_paths.push_back(ss_imgs.str());
+                    skels_paths.push_back(ss_skels.str());
+
+                    ss_imgs.str("");
+                    ss_skels.str("");
+                }
+            }
+            out_imgs_paths.push_back(imgs_paths);
+            out_skels_paths.push_back(skels_paths);
+
+            imgs_paths.clear();
+            skels_paths.clear();
+        }
+    }
+
+    void load_train_paths(const Configuration &conf, vector<vector<string> > &out_skels_paths,
+                          vector<vector<string> > &out_imgs_paths) {
+        load_train_paths(conf.main_path, conf.persons_names, conf.views_names, conf.num_images, out_skels_paths, out_imgs_paths);
+    }
+
+    bool load_models(const vector<vector<string> > &train_skels_paths, const vector<vector<string> > &train_imgs_paths,
+                         const string &descriptor_extractor_type, int keypoint_size, int max_poses, vector<cv::Mat> &masks,
+                         vector<MultiviewBodyModel> &out_models, Timing &timing) {
+        // Initialize time
+        double t0 = timing.enabled ? static_cast<double>(cv::getTickCount()) : 0;
+
+        // Checking dimensions
+        assert(train_imgs_paths.size() == train_skels_paths.size());
+
+        // train_skels_paths.size() = the number of people
+        for (int i = 0; i < train_skels_paths.size(); ++i) {
+
+            // Checking dimensions
+            assert(train_imgs_paths[i].size() == train_skels_paths[i].size());
+
+            MultiviewBodyModel body_model(max_poses);
+
+            // Store the index of the vector with the maximum number of elements
+            int max_size_idx = 0;
+            for (int k = 1; k < train_imgs_paths.size(); ++k) {
+                if (train_imgs_paths[max_size_idx].size() < train_imgs_paths[k].size())
+                    max_size_idx = k;
+            }
+
+
+            int current_image = 0;
+            // number of images inserted
+            // NOTE: if the image was already chosen for the matching then masks[i].at(0, j) > 0 , otherwise 0
+            int non_zero_counter = countNonZero(masks[i].row(0));
+
+            // Accept poses only with this value in the mask's element
+            // (images could be chosen several times, than value >= 1)
+            int value = 0;
+
+            // The loop continue until the maximum size mask has all elements greater than 0
+            while (!body_model.ready() && non_zero_counter <= train_imgs_paths[max_size_idx].size()) {
+
+                // Storing the current mask's element pointer for later use
+                char *mask_elem = &masks[i].row(0).at<char>(current_image);
+
+                // Insert the pose if not present, and mark it as "chosen" in the mask
+                if (*mask_elem == value && *mask_elem != -1) {
+
+                    int result = body_model.ReadAndCompute(train_skels_paths[i][current_image], train_imgs_paths[i][current_image],
+                                                          descriptor_extractor_type, keypoint_size, timing);
+                    // Check the value returned
+                    // -1 => the pose side is not valid -> mark the relative element -1
+                    //  0 => the pose side already exists -> do nothing
+                    //  1 => the pose side is successfully loaded -> increment the mask's element value
+                    if (result == 1) {
+                        (*mask_elem)++;
+                        non_zero_counter++;
+                    }
+                    else if (result == -1) {
+                        (*mask_elem) = -1;
+                        non_zero_counter++;
+                    }
+                }
+                ++current_image;
+
+                // If the end of the list is reached, start from the beginning
+                // In this way we assure that all images in the data set will be considered (even multiple times)
+                if (current_image == train_imgs_paths[i].size()) {
+                    current_image = 0;
+                    value++;
+                }
+            }
+
+            // If the model contains all poses then add it to the vector
+            // otherwise one model is invalid, then exit.
+            if (body_model.ready())
+                out_models.push_back(body_model);
+            else
+                return false;
+        }
+
+        if (timing.enabled) {
+            timing.t_tot_load_training_set += ((double)cv::getTickCount() - t0) / cv::getTickFrequency();
+            timing.n_tot_load_training_set++;
+        }
+
+        return true;
+    }
+
+    void load_test_skel(const string &skel_path, const string &img_path, const string &descriptor_extractor_type,
+                        int keypoint_size, cv::Mat &out_image, vector<cv::KeyPoint> &out_keypoints,
+                        vector<float> &out_confidences, cv::Mat &out_descriptors, int &out_pose_side, Timing &timing) {
+
+        double t_load_test = (timing.enabled) ? cv::getTickCount() : 0;
+
+        read_skel_file(skel_path, keypoint_size, out_keypoints,
+                       out_confidences, out_pose_side);
 
         // Read image
         out_image = cv::imread(img_path);
         if (!out_image.data) {
-            std::cerr << "read_skel: " << img_path << "Invalid image file." << std::endl;
+            std::cerr << "load_test_skel: " << img_path << "Invalid image file." << std::endl;
         }
 
         // Compute descriptors for this view
@@ -510,12 +539,10 @@ namespace multiviewbodymodel {
         descriptor_extractor->compute(out_image, out_keypoints, out_descriptors);
 
         if (timing.enabled) {
-            timing.t_tot_skel_loading += ((double)cv::getTickCount() - t0) / cv::getTickFrequency();
+            timing.t_tot_skel_loading += ((double)cv::getTickCount() - t_load_test) / cv::getTickFrequency();
             timing.n_tot_skel_loading++;
         }
     }
-
-    
 
     template<typename T> int get_rank_index(std::priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > pq,
                                             int test_class) {

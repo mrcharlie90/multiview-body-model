@@ -14,13 +14,15 @@ using std::cerr;
 using std::endl;
 using cv::string;
 
+void test_replace();
+
 int main(int argc, char** argv)
 {
     // This will containg all information regarding file paths function parameters
     Configuration conf;
 
     if (argc < 7) {
-        cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize>";
+        cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize> -n <numberofposes>";
         exit(-1);
     }
     else {
@@ -70,8 +72,8 @@ int main(int argc, char** argv)
         // Body Models used for testing
         vector<MultiviewBodyModel> models;
 
-        while(load_models(conf.descriptor_extractor_type[d], conf.keypoint_size, conf.max_poses,
-                          masks, train_skels_paths, train_imgs_paths, models, timing)) {
+        while(load_models(train_skels_paths, train_imgs_paths, conf.descriptor_extractor_type[d], conf.keypoint_size,
+                          conf.max_poses, masks, models, timing)) {
 
             cout << "----------- " <<  conf.descriptor_extractor_type[d] <<
                     " Models loaded, rounds: " << rounds << " ---------" << endl;
@@ -91,17 +93,19 @@ int main(int argc, char** argv)
                     int test_pose_side;
 
                     // Load the test frame skeleton
-                    read_skel(conf.descriptor_extractor_type[d], conf.keypoint_size,
-                              train_skels_paths[current_class][rnd_indices[current_class][i]],
-                              train_imgs_paths[current_class][rnd_indices[current_class][i]],
-                              test_image, test_keypoints, test_confidences, test_descriptors, test_pose_side, timing);
+                    load_test_skel(train_skels_paths[current_class][rnd_indices[current_class][i]],
+                                   train_imgs_paths[current_class][rnd_indices[current_class][i]],
+                                   conf.descriptor_extractor_type[d], conf.keypoint_size, test_image, test_keypoints,
+                                   test_confidences,
+                                   test_descriptors, test_pose_side, timing);
 
                     // Compute the matching score between the test image and each model
                     // the result is inserted into the priority queue named "scores"
                     std::priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > scores;
                     for (int j = 0; j < models.size(); ++j) {
                         RankElement<float> rank_element;
-                        rank_element.score = models[j].Match(test_descriptors, test_confidences, test_pose_side);
+                        rank_element.score = models[j].Match(test_descriptors, test_confidences,
+                                                             test_pose_side, conf.occlusion_search);
                         rank_element.classIdx = j;
                         scores.push(rank_element);
                     }
@@ -112,7 +116,6 @@ int main(int argc, char** argv)
                     for (int k = rank_idx; k < rates.cols; ++k) {
                         rates.at<float>(0, k)++;
                     }
-
                 }
             }
 
@@ -168,7 +171,25 @@ int main(int argc, char** argv)
         rounds = 1;
     }
 
-
-
     return 0;
+}
+
+void test_replace() {
+    // Testing replace function
+    MultiviewBodyModel mbm(4);
+    Timing t;
+
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00000_skel.txt",
+                       "../ds/gianluca_sync/c00000.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00004_skel.txt",
+                       "../ds/gianluca_sync/c00004.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00009_skel.txt",
+                       "../ds/gianluca_sync/c00009.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00016_skel.txt",
+                       "../ds/gianluca_sync/c00016.png", "SURF", 9, t);
+
+    cv::Mat img = cv::imread("../ds/gianluca_sync/c00005.png");
+    cout << mbm.Replace("../ds/gianluca_sync/c00005_skel.txt", img, "SURF", 9) << endl;
+
+    exit(0);
 }
