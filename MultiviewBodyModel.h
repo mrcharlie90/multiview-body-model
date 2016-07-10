@@ -25,7 +25,6 @@
 namespace  multiviewbodymodel {
     using std::vector;
     using cv::string;
-    
 
     // Used for performance logging.
     // Each field stores a timing value named according to the
@@ -63,24 +62,15 @@ namespace  multiviewbodymodel {
         // Overall time to compute the matching
         double t_tot_matching;
 
-        // Overall times
-        vector<double> t_descriptor_names;
-
-        vector<string> descriptor_names;
-        Timing() {
-            enabled = false;
-        }
-
         void enable() {
             enabled = true;
         }
+
         // Writes all stats values in a file named timing.xml
         void write(string name);
 
         // Show the all the stats value on the console
         void show();
-
-
     };
 
     // Models a skeleton of one person seen in a scene captured by several cameras.
@@ -120,7 +110,7 @@ namespace  multiviewbodymodel {
         // If occlusion_search is true (by default), a keypoint descriptor which is occluded is match 
         // with a descriptor in another view (the first one which has the descriptor visible).
         float Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side,
-                    bool occlusion_search = true);
+                    bool occlusion_search = true, int norm_type = cv::NORM_L2);
 
         // Returns true when all poses in the model are acquired successfully.
         // This means that the current pose_sides_ vector has size equal to max_poses
@@ -195,6 +185,7 @@ namespace  multiviewbodymodel {
     struct Configuration {
         // From the conf file
         string conf_file_path;
+        string res_file_path;
         string main_path;
         vector<string> persons_names;
         vector<string> views_names;
@@ -203,6 +194,7 @@ namespace  multiviewbodymodel {
 
         // From the command line
         vector<string> descriptor_extractor_type;
+        int norm_type;
         int keypoint_size;
         bool occlusion_search;
 
@@ -212,6 +204,10 @@ namespace  multiviewbodymodel {
 
     // Parse input arguments and initialize the configuration object.
     void parse_args(int argc, char **argv, Configuration &out_conf);
+
+
+    // Gets the corresponding descriptor's norm type
+    int get_norm_type(const char *descriptor_name);
 
     // Checks if the file node fn is a sequence, used only in parse_args()
     void check_sequence(cv::FileNode fn);
@@ -238,6 +234,11 @@ namespace  multiviewbodymodel {
     void load_test_skel(const string &skel_path, const string &img_path, const string &descriptor_extractor_type,
                         int keypoint_size, cv::Mat &out_image, vector <cv::KeyPoint> &out_keypoints,
                         vector<float> &out_confidences, cv::Mat &out_descriptors, int &out_pose_side, Timing &timing);
+
+    // Computes descriptors using the given descriptor extractor type.
+    // If a descriptor could not be computed in the corresponding keypoint, a zero-row is inserted.
+    void compute_descriptors(const vector<cv::KeyPoint> &in_keypoints, const cv::Mat &image,
+                             const string &descriptor_extractor_type, cv::Mat &out_descriptors);
 
     // Returns the index in the queue of the element with the class equal to test_class
     template<typename T>

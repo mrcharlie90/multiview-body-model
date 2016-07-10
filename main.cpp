@@ -71,7 +71,6 @@ int main(int argc, char** argv)
 
         // Body Models used for testing
         vector<MultiviewBodyModel> models;
-
         while(load_models(train_skels_paths, train_imgs_paths, conf.descriptor_extractor_type[d], conf.keypoint_size,
                           conf.max_poses, masks, models, timing)) {
 
@@ -93,11 +92,11 @@ int main(int argc, char** argv)
                     int test_pose_side;
 
                     // Load the test frame skeleton
-                    load_test_skel(train_skels_paths[current_class][rnd_indices[current_class][i]],
-                                   train_imgs_paths[current_class][rnd_indices[current_class][i]],
+                    int image_idx = rnd_indices[current_class][i];
+
+                    load_test_skel(train_skels_paths[current_class][image_idx], train_imgs_paths[current_class][image_idx],
                                    conf.descriptor_extractor_type[d], conf.keypoint_size, test_image, test_keypoints,
-                                   test_confidences,
-                                   test_descriptors, test_pose_side, timing);
+                                   test_confidences, test_descriptors, test_pose_side, timing);
 
                     // Compute the matching score between the test image and each model
                     // the result is inserted into the priority queue named "scores"
@@ -134,34 +133,35 @@ int main(int argc, char** argv)
 
             // Log performance
             if (timing.enabled) {
-                double time = ((double)cv::getTickCount() - t0) / cv::getTickFrequency();
+                double time = (cv::getTickCount() - t0) / cv::getTickFrequency();
                 // Averaged matching time
                 timing.t_tot_round += time;
                 timing.n_rounds++;
 
-                // Overall matching time
-                timing.t_tot_matching += time;
-
-
+                timing.t_tot_matching = time;
             }
-        } // end-while
 
-        if (timing.enabled) {
-            timing.descriptor_names.push_back(conf.descriptor_extractor_type[d]);
-            timing.t_descriptor_names.push_back(timing.t_tot_matching);
-        }
+
+        } // end-while
 
         // Compute the average
         CMC /= (rounds - 1);
         cout << "CMC: " << CMC << endl;
+        cout << "Tot time: " << timing.t_tot_matching << endl;
 
         // Save the results
         std::stringstream ss;
-        ss << "../CMC_" << conf.descriptor_extractor_type[d] << "_" << conf.max_poses << "_RND" << endl;
+        ss << conf.res_file_path
+        << "CMC_" << conf.descriptor_extractor_type[d]
+        << "_N" << conf.persons_names.size()
+        << "_PS" << conf.max_poses  << "_RND" << endl;
         saveCMC(ss.str(), CMC);
         ss.str("");
 
-        ss << "../TIME_" << conf.descriptor_extractor_type[d] << "_" << conf.max_poses << "_RND" << endl;
+        ss << conf.res_file_path
+        << "TIME_" << conf.descriptor_extractor_type[d]
+        << "_N" << conf.persons_names.size()
+        << "_PS" << conf.max_poses  << "_RND" << endl;
         if (timing.enabled)
             timing.write(ss.str());
         ss.str("");
