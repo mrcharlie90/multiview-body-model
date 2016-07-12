@@ -347,7 +347,6 @@ namespace multiviewbodymodel {
                     }
                     else if (strcmp(argv[i+1], "H") == 0) {
                         out_conf.descriptor_extractor_type.push_back("BRIEF");
-                        out_conf.descriptor_extractor_type.push_back("BRISK");
                         out_conf.descriptor_extractor_type.push_back("ORB");
                         out_conf.descriptor_extractor_type.push_back("FREAK");
                         out_conf.norm_type = cv::NORM_HAMMING;
@@ -362,7 +361,7 @@ namespace multiviewbodymodel {
                 else if (strcmp(argv[i], "-k") == 0) {
                     out_conf.keypoint_size = atoi(argv[++i]);
                 }
-                else if (strcmp(argv[i], "-n") == 0) {
+                else if (strcmp(argv[i], "-ps") == 0) {
                     out_conf.max_poses = atoi(argv[++i]);
                 }
             }
@@ -574,7 +573,38 @@ namespace multiviewbodymodel {
         cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
         descriptor_extractor->compute(image, tmp_keypoints, tmp_descriptors);
 
-        // Once descriptors are computed, check if some keypoints are removed by the extractor algorithm
+//        if (descriptor_extractor_type == "SIFT") {
+//            // SIFT( int nfeatures=0, int nOctaveLayers=3,double contrastThreshold=0.04, double edgeThreshold=10,double sigma=1.6)
+//            cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 10, 2);
+//            sift_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+//        }
+//        else if (descriptor_extractor_type == "SURF") {
+//            // SURF(double hessianThreshold,int nOctaves=4, int nOctaveLayers=2, bool extended=true, bool upright=false);
+//            cv::SurfDescriptorExtractor surf_extractor;
+//            surf_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+//        }
+//        else if (descriptor_extractor_type == "BRIEF") {
+//            // bytes is a length of descriptor in bytes. It can be equal 16, 32 or 64 bytes.
+//            cv::BriefDescriptorExtractor brief_extractor(32);
+//            brief_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+//        }
+//        else if (descriptor_extractor_type == "ORB") {
+//            // ORB(int nfeatures = 500, float scaleFactor = 1.2f, int nlevels = 8, int edgeThreshold = 31,
+//            // int firstLevel = 0, int WTA_K=2, int scoreType=ORB::HARRIS_SCORE, int patchSize=31 );
+//            cv::OrbDescriptorExtractor orb_extractor;
+//            orb_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+//        }
+//        else if (descriptor_extractor_type == "FREAK") {
+//            // FREAK( bool orientationNormalized = true, bool scaleNormalized = true,
+//            // float patternScale = 22.0f, int nOctaves = 4, const vector<int>& selectedPairs = vector<int>());
+//            cv::FREAK freak_extractor;
+//            freak_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+//        }
+
+
+
+
+            // Once descriptors are computed, check if some keypoints are removed by the extractor algorithm
         Mat descriptors(static_cast<int>(in_keypoints.size()), tmp_descriptors.cols, tmp_descriptors.type());
         out_descriptors = descriptors;
 
@@ -582,7 +612,7 @@ namespace multiviewbodymodel {
         Mat zero_row;
         zero_row = Mat::zeros(1, tmp_descriptors.cols, tmp_descriptors.type());
 
-        // Check the output keypoints' size
+        // Check the output size
         if (tmp_keypoints.size() < in_keypoints.size()) {
             int k1 = 0;
             int k2 = 0;
@@ -772,6 +802,23 @@ namespace multiviewbodymodel {
                 file << "(" << j+1 << "," << cmc.at<float>(0, j) * 100 << ")";
             }
             file << "};";
+            file.close();
+        }
+        else
+            cerr << endl << "saveCMC(): Cannot open the file!" << endl;
+
+        cout << "done!" << endl;
+    }
+
+    void cmc2dat(string path, Mat cmc) {
+        assert(cmc.rows == 1);
+
+        cout << "Saving CMC...";
+        std::ofstream file(path + ".dat");
+        if (file.is_open()) {
+            file << "rank     recrate" << endl;
+            for (int j = 0; j < cmc.cols; ++j)
+                file << j + 1 << "        " << cmc.at<float>(0, j) * 100 << endl;
             file.close();
         }
         else

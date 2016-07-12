@@ -22,6 +22,7 @@
 #include <opencv2/nonfree/nonfree.hpp>
 #include <opencv/cxcore.h>
 
+
 namespace  multiviewbodymodel {
     using std::vector;
     using cv::string;
@@ -261,6 +262,8 @@ namespace  multiviewbodymodel {
 
     // Saves the CMC curve in a file
     void saveCMC(string path, cv::Mat cmc);
+
+    void cmc2dat(string path, cv::Mat cmc);
 
     // Saves in a file mask.xml the set of mask used during models loading
     void save_mask(string d_name, vector<cv::Mat> masks);

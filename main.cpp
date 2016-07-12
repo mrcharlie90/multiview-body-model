@@ -4,6 +4,7 @@
 //
 // Main used for testing the MultiviewMBodyModel class in particular the
 // accuracy of the matching function used.
+//
 
 #include "MultiviewBodyModel.h"
 
@@ -18,11 +19,11 @@ void test_replace();
 
 int main(int argc, char** argv)
 {
-    // This will containg all information regarding file paths function parameters
     Configuration conf;
 
     if (argc < 7) {
         cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize> -n <numberofposes>";
+        cout << "EXAMPLE: -c ../conf.xml -r ../res/ -d L2 -k 9 -ps 3" << endl;
         exit(-1);
     }
     else {
@@ -39,9 +40,6 @@ int main(int argc, char** argv)
     Timing timing;
     timing.enable();
 
-    // Number of cycles
-    int rounds = 1;
-
     // Initial timing variable
     double t0 = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
@@ -53,6 +51,7 @@ int main(int argc, char** argv)
     vector<vector<int> > rnd_indices;
     int tot_test_imgs = get_rnd_indices(map, conf.max_poses, rnd_indices);
 
+    // when -all flag is passed, do it for all descriptor extractors type
     for (int d = 0; d < conf.descriptor_extractor_type.size(); ++d) {
 
         // Used for storing a set of masks in which one of them marks (with 0 or 1) the pose
@@ -68,6 +67,9 @@ int main(int argc, char** argv)
         // contains the average person re-identification rate
         cv::Mat CMC;
         CMC = cv::Mat::zeros(1, static_cast<int>(conf.persons_names.size()), CV_32F);
+
+        // Number of cycles
+        int rounds = 1;
 
         // Body Models used for testing
         vector<MultiviewBodyModel> models;
@@ -140,8 +142,6 @@ int main(int argc, char** argv)
 
                 timing.t_tot_matching = time;
             }
-
-
         } // end-while
 
         // Compute the average
@@ -154,21 +154,23 @@ int main(int argc, char** argv)
         ss << conf.res_file_path
         << "CMC_" << conf.descriptor_extractor_type[d]
         << "_N" << conf.persons_names.size()
-        << "_PS" << conf.max_poses  << "_RND" << endl;
-        saveCMC(ss.str(), CMC);
+        << "_PS" << conf.max_poses
+        << "_K" << conf.keypoint_size
+        << "_RND";
+        cmc2dat(ss.str(), CMC);
         ss.str("");
 
         ss << conf.res_file_path
         << "TIME_" << conf.descriptor_extractor_type[d]
         << "_N" << conf.persons_names.size()
-        << "_PS" << conf.max_poses  << "_RND" << endl;
+        << "_PS" << conf.max_poses
+        << "_K" << conf.keypoint_size
+        << "_RND";
         if (timing.enabled)
             timing.write(ss.str());
         ss.str("");
 
         print_dataset_usage(masks);
-
-        rounds = 1;
     }
 
     return 0;
