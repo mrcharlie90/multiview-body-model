@@ -328,7 +328,7 @@ namespace multiviewbodymodel {
         out_conf.res_file_path = "../res/";
 
         for (int i = 1; i < argc; ++i) {
-            if (i + 1 != argc) {
+            if (i != argc) {
                 if (strcmp(argv[i], "-c") == 0) {
                     ss << argv[++i];
                     out_conf.conf_file_path = ss.str();
@@ -498,8 +498,6 @@ namespace multiviewbodymodel {
 
                 // Insert the pose if not present, and mark it as "chosen" in the mask
                 if (*mask_elem == value && *mask_elem != -1) {
-
-
                     int result = body_model.ReadAndCompute(train_skels_paths[i][current_image], train_imgs_paths[i][current_image],
                                                           descriptor_extractor_type, keypoint_size, timing);
                     // Check the value returned
@@ -810,7 +808,7 @@ namespace multiviewbodymodel {
         cout << "done!" << endl;
     }
 
-    void cmc2dat(string path, Mat cmc) {
+    void cmc2dat(string path, cv::Mat cmc, float nAUC) {
         assert(cmc.rows == 1);
 
         cout << "Saving CMC...";
@@ -819,11 +817,13 @@ namespace multiviewbodymodel {
             file << "rank     recrate" << endl;
             for (int j = 0; j < cmc.cols; ++j)
                 file << j + 1 << "        " << cmc.at<float>(0, j) * 100 << endl;
-            file.close();
         }
         else
             cerr << endl << "saveCMC(): Cannot open the file!" << endl;
 
+        file << path << " nAUC: " << nAUC * 100 << endl;
+
+        file.close();
         cout << "done!" << endl;
     }
 

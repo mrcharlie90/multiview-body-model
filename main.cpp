@@ -147,6 +147,16 @@ int main(int argc, char** argv)
         // Compute the average
         CMC /= (rounds - 1);
         cout << "CMC: " << CMC << endl;
+
+        // Compute nAUC
+        float nAUC = 0;
+        for (int c  = 0; c < CMC.cols - 1; ++c) {
+            nAUC += (CMC.at<float>(0, c) + CMC.at<float>(0, c + 1));
+        }
+        nAUC /= 2;
+        nAUC /= CMC.cols; // normalize
+        cout << "nAUC: " << nAUC * 100 << endl;
+
         cout << "Tot time: " << timing.t_tot_matching << endl;
 
         // Save the results
@@ -157,7 +167,7 @@ int main(int argc, char** argv)
         << "_PS" << conf.max_poses
         << "_K" << conf.keypoint_size
         << "_RND";
-        cmc2dat(ss.str(), CMC);
+        cmc2dat(ss.str(), CMC, nAUC);
         ss.str("");
 
         ss << conf.res_file_path
