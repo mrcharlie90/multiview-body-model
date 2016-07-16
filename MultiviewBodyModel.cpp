@@ -312,9 +312,14 @@ namespace multiviewbodymodel {
         }
         cout << "]" << endl << endl;
         cout << "DESCRIPTOR TYPE: " <<
-                  (descriptor_extractor_type.size() > 1 ? "all" : descriptor_extractor_type[0]) << endl;
+                (descriptor_extractor_type.size() > 1 ? "all" : descriptor_extractor_type[0]) << endl;
         cout << "NORM_TYPE: " << (norm_type == cv::NORM_L2 ? "L2" : "Hamming") << endl;
-        cout << "KEYPOINT SIZE: " << keypoint_size << endl;
+
+        cout << "KEYPOINT SIZE: ";
+        if (keypoint_size.size() > 1)
+            cout << "predefined" << endl;
+        else
+            cout << keypoint_size[0] << endl;
         cout << "OCCLUSION SEARCH: " << (occlusion_search ? "T" : "F") << endl;
         cout << "MAX POSES: " << max_poses << endl;
         cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
@@ -340,15 +345,25 @@ namespace multiviewbodymodel {
                     ss.str("");
                 }
                 else if (strcmp(argv[i], "-d") == 0) {
+                    if (out_conf.keypoint_size.size() > 0)
+                        out_conf.keypoint_size.clear();
+
                     if (strcmp(argv[i+1], "L2") == 0) {
                         out_conf.descriptor_extractor_type.push_back("SURF");
+                        out_conf.keypoint_size.push_back(11);
                         out_conf.descriptor_extractor_type.push_back("SIFT");
+                        out_conf.keypoint_size.push_back(3);
+
                         out_conf.norm_type = cv::NORM_L2;
                     }
                     else if (strcmp(argv[i+1], "H") == 0) {
                         out_conf.descriptor_extractor_type.push_back("BRIEF");
+                        out_conf.keypoint_size.push_back(11);
                         out_conf.descriptor_extractor_type.push_back("ORB");
+                        out_conf.keypoint_size.push_back(9);
                         out_conf.descriptor_extractor_type.push_back("FREAK");
+                        out_conf.keypoint_size.push_back(9);
+
                         out_conf.norm_type = cv::NORM_HAMMING;
                     }
                     else {
@@ -359,7 +374,20 @@ namespace multiviewbodymodel {
                     }
                 }
                 else if (strcmp(argv[i], "-k") == 0) {
-                    out_conf.keypoint_size = atoi(argv[++i]);
+                    int value = atoi(argv[++i]);
+
+                    int size = out_conf.descriptor_extractor_type.size();
+                    if (size > 0) {
+                        out_conf.keypoint_size.clear();
+                        // Put the same keypoint size for all the descriptors
+                        for (int j = 0; j < size; ++j) {
+                            out_conf.keypoint_size.push_back(value);
+                        }
+                    }
+                    else {
+                        // Put only one keypoint size
+                        out_conf.keypoint_size.push_back(value);
+                    }
                 }
                 else if (strcmp(argv[i], "-ps") == 0) {
                     out_conf.max_poses = atoi(argv[++i]);
@@ -568,39 +596,45 @@ namespace multiviewbodymodel {
         // Required variables
         vector<cv::KeyPoint> tmp_keypoints(in_keypoints);
         cv::Mat tmp_descriptors;
-        cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
-        descriptor_extractor->compute(image, tmp_keypoints, tmp_descriptors);
+//        cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
+//        descriptor_extractor->compute(image, tmp_keypoints, tmp_descriptors);
 
-//        if (descriptor_extractor_type == "SIFT") {
-//            // SIFT( int nfeatures=0, int nOctaveLayers=3,double contrastThreshold=0.04, double edgeThreshold=10,double sigma=1.6)
-//            cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 10, 2);
-//            sift_extractor.compute(image, tmp_keypoints, tmp_descriptors);
-//        }
-//        else if (descriptor_extractor_type == "SURF") {
-//            // SURF(double hessianThreshold,int nOctaves=4, int nOctaveLayers=2, bool extended=true, bool upright=false);
-//            cv::SurfDescriptorExtractor surf_extractor;
-//            surf_extractor.compute(image, tmp_keypoints, tmp_descriptors);
-//        }
-//        else if (descriptor_extractor_type == "BRIEF") {
-//            // bytes is a length of descriptor in bytes. It can be equal 16, 32 or 64 bytes.
-//            cv::BriefDescriptorExtractor brief_extractor(32);
-//            brief_extractor.compute(image, tmp_keypoints, tmp_descriptors);
-//        }
-//        else if (descriptor_extractor_type == "ORB") {
-//            // ORB(int nfeatures = 500, float scaleFactor = 1.2f, int nlevels = 8, int edgeThreshold = 31,
-//            // int firstLevel = 0, int WTA_K=2, int scoreType=ORB::HARRIS_SCORE, int patchSize=31 );
-//            cv::OrbDescriptorExtractor orb_extractor;
-//            orb_extractor.compute(image, tmp_keypoints, tmp_descriptors);
-//        }
-//        else if (descriptor_extractor_type == "FREAK") {
-//            // FREAK( bool orientationNormalized = true, bool scaleNormalized = true,
-//            // float patternScale = 22.0f, int nOctaves = 4, const vector<int>& selectedPairs = vector<int>());
-//            cv::FREAK freak_extractor;
-//            freak_extractor.compute(image, tmp_keypoints, tmp_descriptors);
-//        }
-
-
-
+        if (descriptor_extractor_type == "SIFT") {
+            // SIFT( int nfeatures=0, int nOctaveLayers=3,double contrastThreshold=0.04, double edgeThreshold=10,double sigma=1.6)
+            // best keypoint size 3
+            // migliorato con keypoint size più piccolo
+            cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 15, 1.6);
+            sift_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+        }
+        else if (descriptor_extractor_type == "SURF") {
+            // SURF(double hessianThreshold,int nOctaves=4, int nOctaveLayers=2, bool extended=true, bool upright=false);
+            // best keypoint size 11
+//            CMC: [0.40492955, 0.56266665, 0.67962509, 0.77331567, 0.85558635, 0.93290806, 1]
+//            nAUC: 64.3795
+            // migliorato con upright = false
+            cv::SurfDescriptorExtractor surf_extractor(0, 4, 2, true, true);
+            surf_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+        }
+        else if (descriptor_extractor_type == "BRIEF") {
+            // bytes is a length of descriptor in bytes. It can be equal 16, 32 or 64 bytes.
+            // keypoint size 11
+            cv::BriefDescriptorExtractor brief_extractor(64);
+            brief_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+        }
+        else if (descriptor_extractor_type == "ORB") {
+            // ORB(int nfeatures = 500, float scaleFactor = 1.2f, int nlevels = 8, int edgeThreshold = 31,
+            // int firstLevel = 0, int WTA_K=2, int scoreType=ORB::HARRIS_SCORE, int patchSize=31 );
+            // best keypoint size 9
+            cv::OrbDescriptorExtractor orb_extractor(0, 0, 0, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
+            orb_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+        }
+        else if (descriptor_extractor_type == "FREAK") {
+            // FREAK( bool orientationNormalized = true, bool scaleNormalized = true,
+            // float patternScale = 22.0f, int nOctaves = 4, const vector<int>& selectedPairs = vector<int>());
+            // best keypoint size = 3
+            cv::FREAK freak_extractor(true, true, 22.0f, 4, vector<int>());
+            freak_extractor.compute(image, tmp_keypoints, tmp_descriptors);
+        }
 
             // Once descriptors are computed, check if some keypoints are removed by the extractor algorithm
         Mat descriptors(static_cast<int>(in_keypoints.size()), tmp_descriptors.cols, tmp_descriptors.type());
@@ -766,11 +800,11 @@ namespace multiviewbodymodel {
         cv::FileStorage fs(name + ".xml", cv::FileStorage::WRITE);
         if(fs.isOpened()) {
             fs << "avgLoadingTrainingSet" << (t_tot_load_training_set / n_tot_load_training_set);
-            fs << "avgOneRound" << (t_tot_round / n_rounds);
+            fs << "avgMatch" << (t_tot_matching / n_rounds);
             fs << "avgDescriptorsComputation" << (t_tot_descriptors / n_tot_descriptors);
             fs << "avgOneModelLoading" << (t_tot_model_loading / n_tot_model_loading);
             fs << "avgSkelLoading" << (t_tot_skel_loading / n_tot_skel_loading);
-            fs << "totMatching" << t_tot_matching;
+            fs << "totExec" << t_tot_exec;
             fs.release();
         }
         else
@@ -781,11 +815,11 @@ namespace multiviewbodymodel {
     void multiviewbodymodel::Timing::show() {
         cout << "----------------- PERFORMANCE -----------------" << endl;
         cout << "avgLoadingTrainingSet " << (t_tot_load_training_set / n_rounds);
-        cout << "avgOneRound " << (t_tot_round / n_rounds);
+        cout << "avgOneRound " << (t_tot_matching / n_rounds);
         cout << "avgDescriptorsComputation " << (t_tot_descriptors / n_tot_descriptors);
         cout << "avgOneModelLoading " << (t_tot_model_loading / n_tot_model_loading);
         cout << "avgSkelLoading " << (t_tot_skel_loading / n_tot_skel_loading);
-        cout << "totMatching " << t_tot_matching;
+        cout << "totMatching " << t_tot_exec;
         cout << "-----------------------------------------------" << endl;
     }
 
@@ -821,7 +855,7 @@ namespace multiviewbodymodel {
         else
             cerr << endl << "saveCMC(): Cannot open the file!" << endl;
 
-        file << path << " nAUC: " << nAUC * 100 << endl;
+        file << path << " nAUC: " << nAUC * 100 << "%" << endl;
 
         file.close();
         cout << "done!" << endl;

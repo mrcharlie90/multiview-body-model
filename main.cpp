@@ -40,8 +40,8 @@ int main(int argc, char** argv)
     Timing timing;
     timing.enable();
 
-    // Initial timing variable
-    double t0 = (timing.enabled) ? (double)cv::getTickCount() : 0;
+    // Initial matching time variable
+    double t0_match = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
     // Generate a map for the current dataset
     vector<vector<int> > map;
@@ -51,7 +51,8 @@ int main(int argc, char** argv)
     vector<vector<int> > rnd_indices;
     int tot_test_imgs = get_rnd_indices(map, conf.max_poses, rnd_indices);
 
-    // when -all flag is passed, do it for all descriptor extractors type
+    // when -L2 or -H flag is passed, a set of descriptors is computed
+    // (Euclidean distance ones and Hamming distance ones respectively)
     for (int d = 0; d < conf.descriptor_extractor_type.size(); ++d) {
 
         // Used for storing a set of masks in which one of them marks (with 0 or 1) the pose
@@ -73,8 +74,10 @@ int main(int argc, char** argv)
 
         // Body Models used for testing
         vector<MultiviewBodyModel> models;
-        while(load_models(train_skels_paths, train_imgs_paths, conf.descriptor_extractor_type[d], conf.keypoint_size,
+        while(load_models(train_skels_paths, train_imgs_paths, conf.descriptor_extractor_type[d], conf.keypoint_size[d],
                           conf.max_poses, masks, models, timing)) {
+
+            double t0_round = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
             cout << "----------- " <<  conf.descriptor_extractor_type[d] <<
                     " Models loaded, rounds: " << rounds << " ---------" << endl;
@@ -97,7 +100,7 @@ int main(int argc, char** argv)
                     int image_idx = rnd_indices[current_class][i];
 
                     load_test_skel(train_skels_paths[current_class][image_idx], train_imgs_paths[current_class][image_idx],
-                                   conf.descriptor_extractor_type[d], conf.keypoint_size, test_image, test_keypoints,
+                                   conf.descriptor_extractor_type[d], conf.keypoint_size[d], test_image, test_keypoints,
                                    test_confidences, test_descriptors, test_pose_side, timing);
 
                     // Compute the matching score between the test image and each model
@@ -135,12 +138,13 @@ int main(int argc, char** argv)
 
             // Log performance
             if (timing.enabled) {
-                double time = (cv::getTickCount() - t0) / cv::getTickFrequency();
+                double match_time = (cv::getTickCount() - t0_match) / cv::getTickFrequency();
+                double round_time = (cv::getTickCount() - t0_round) / cv::getTickFrequency();
                 // Averaged matching time
-                timing.t_tot_round += time;
+                timing.t_tot_matching += round_time;
                 timing.n_rounds++;
 
-                timing.t_tot_matching = time;
+                timing.t_tot_exec = match_time;
             }
         } // end-while
 
@@ -157,7 +161,7 @@ int main(int argc, char** argv)
         nAUC /= CMC.cols; // normalize
         cout << "nAUC: " << nAUC * 100 << endl;
 
-        cout << "Tot time: " << timing.t_tot_matching << endl;
+        cout << "Tot time: " << timing.t_tot_exec << endl;
 
         // Save the results
         std::stringstream ss;
@@ -165,7 +169,7 @@ int main(int argc, char** argv)
         << "CMC_" << conf.descriptor_extractor_type[d]
         << "_N" << conf.persons_names.size()
         << "_PS" << conf.max_poses
-        << "_K" << conf.keypoint_size
+        << "_K" << conf.keypoint_size[d]
         << "_RND";
         cmc2dat(ss.str(), CMC, nAUC);
         ss.str("");
@@ -174,7 +178,7 @@ int main(int argc, char** argv)
         << "TIME_" << conf.descriptor_extractor_type[d]
         << "_N" << conf.persons_names.size()
         << "_PS" << conf.max_poses
-        << "_K" << conf.keypoint_size
+        << "_K" << conf.keypoint_size[d]
         << "_RND";
         if (timing.enabled)
             timing.write(ss.str());

@@ -45,7 +45,7 @@ namespace  multiviewbodymodel {
         int n_tot_load_training_set;
 
         // Average time for one round in the main while
-        double t_tot_round;
+        double t_tot_matching;
         int n_rounds;
 
         // Average time to compute the descriptors
@@ -61,7 +61,7 @@ namespace  multiviewbodymodel {
         int n_tot_skel_loading;
 
         // Overall time to compute the matching
-        double t_tot_matching;
+        double t_tot_exec;
 
         void enable() {
             enabled = true;
@@ -196,7 +196,7 @@ namespace  multiviewbodymodel {
         // From the command line
         vector<string> descriptor_extractor_type;
         int norm_type;
-        int keypoint_size;
+        vector<int> keypoint_size;
         bool occlusion_search;
 
         // Shows the parameters loaded from the config.xml file
