@@ -114,13 +114,14 @@ namespace  multiviewbodymodel {
         //
         // If occlusion_search is true (by default), a keypoint descriptor which is occluded is match 
         // with a descriptor in another view (the first one which has the descriptor visible).
+        //
+        // Returns the euclidean or Hamming distance, otherwise -1 if the pose is not present in the model.
         float Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side, bool occlusion_search,
                             int norm_type, Timing &timing);
 
         // Returns true when all poses in the model are acquired successfully.
         // This means that the current pose_sides_ vector has size equal to max_poses
         bool ready();
-
 
         // Returns the memory usage of the current object
         int get_size_of();
@@ -135,11 +136,11 @@ namespace  multiviewbodymodel {
         // 2. one keypoint occluded and the other visible
         // 3. both keypoints visible
         //
-        // out_mask is defined in this way:
-        // 1. both keypoints occluded => mask(i,j) = 0 (Don't consider keypoints)
-        // 2. one keypoint occluded and the other visible => mask(i,j) = 1 -> Find the keypoint
-        // occluded in the other views
-        // 3. both keypoints visible => mask(i,j) = 2 -> Compute the distance between the keypoints
+        // out_mask is defined in this way (relative to the i-th person):
+        // 1. both j-th keypoints occluded => out_mask(i,j) = 0 (Don't consider keypoints)
+        // 2. one j-th keypoint is occluded and the other visible => out_mask(i,j) = 1 -> Find the keypoint
+        //                                                                                occluded in the other views
+        // 3. both j-th keypoints are visible => out_mask(i,j) = 2 -> Compute the distance between the keypoints
         void create_confidence_mask(const vector<float> &test_confidences, const vector<float> &train_confidences,
                                     vector<char> &out_mask);
 
@@ -147,7 +148,6 @@ namespace  multiviewbodymodel {
         // is visible.
         // Returns true if a non-occluded keypoint's descriptors are found, false otherwise
         bool  get_descriptor_occluded(int keypoint_index, cv::Mat &descriptor_occluded);
-
 
         // The maximum number of poses the model should accept
         int max_poses_;
@@ -173,7 +173,7 @@ namespace  multiviewbodymodel {
     //                           Functions declarations                          //
     // ------------------------------------------------------------------------- //
 
-    // Read the skel file path:
+    // Read the skeleton file:
     // returns a vector of keypoints, a vector of confidences and the pose side of the skeleton
     void read_skel_file(const string &skel_path, int keypoint_size, vector<cv::KeyPoint> &out_keypoints,
                         vector<float> &out_confidences, int &out_pose_side);
@@ -210,7 +210,7 @@ namespace  multiviewbodymodel {
         vector<int> keypoint_size;
         bool occlusion_search;
 
-        // Shows the parameters loaded from the config.xml file
+        // Shows the parameters loaded from the console and from the config.xml file
         void show();
     };
 
@@ -220,8 +220,8 @@ namespace  multiviewbodymodel {
     // Show the help for parameters settings
     void show_help();
 
-
     // Gets the corresponding descriptor's norm type
+    // Returns -1 if a invalid descriptor name is given
     int get_norm_type(const char *descriptor_name);
 
     // Checks if the file node fn is a sequence, used only in parse_args()
@@ -277,15 +277,19 @@ namespace  multiviewbodymodel {
     // Saves the CMC curve in a file
     void saveCMC(string path, cv::Mat cmc);
 
+    // Saves the CMC in a dat file
     void cmc2dat(string path, cv::Mat cmc, float nAUC);
 
+    // Append the current descriptor rank-1 results to the same file
     void rank1_append_results(string path, string desc_extractor, cv::Mat cmc);
 
+    // Append the current descriptor nAUC results to the same file
     void nauc_append_result(string path, string desc_extractor, float nauc);
 
     // Saves in a file mask.xml the set of mask used during models loading
     void save_mask(string d_name, vector<cv::Mat> masks);
 
+    // Print the percentage of frame used in the dataset
     void print_dataset_usage(vector<cv::Mat> masks);
 
 }

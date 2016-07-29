@@ -2,8 +2,20 @@
 //
 //          IASLab License
 //
-// Main used for testing the MultiviewMBodyModel class in particular the
-// accuracy of the matching function used.
+// Main used for testing the MultiviewMBodyModel class.
+// First of all it loads the parameters settings.
+//
+// Then it test a single or a set of descriptors with the models created.
+// The test set is chosen from a random set of images and the overall dataset
+// is used to load models.
+//
+// When the models are loaded all the frames in the test set are matched,
+// compunting the CMC curve and the relative nAUC.
+//
+// Then the results are stored in files contained in the result directory
+// specified by the configuration file
+//
+// Methods to test the replace function and for seeing the memory usage are implemented.
 //
 
 #include "MultiviewBodyModel.h"
@@ -38,7 +50,7 @@ int main(int argc, char** argv)
     vector<vector<string> > train_skels_paths;
     load_train_paths(conf, train_skels_paths, train_imgs_paths);
 
-    // Used for performance logging
+    // Execution times logging
     Timing timing;
     timing.enable();
 
@@ -53,9 +65,10 @@ int main(int argc, char** argv)
     vector<vector<int> > rnd_indices;
     int tot_test_imgs = get_rnd_indices(map, conf.max_poses, rnd_indices);
 
-    // when -L2 or -H flag is passed, a set of descriptors is computed
+    // When -L2 or -H flag is passed, a set of descriptors is computed
     // (Euclidean distance ones and Hamming distance ones respectively)
     for (int d = 0; d < conf.descriptor_extractor_type.size(); ++d) {
+
         // Used for storing a set of masks in which one of them marks (with 0 or 1) the pose
         // already chosen for the body model loading phase
         vector<cv::Mat> masks;
@@ -80,8 +93,7 @@ int main(int argc, char** argv)
 
             double t0_round = (timing.enabled) ? (double)cv::getTickCount() : 0;
 
-            cout << "----------- " <<  conf.descriptor_extractor_type[d] <<
-                    " Models loaded, rounds: " << rounds << " ---------" << endl;
+            cout << "----------- " <<  conf.descriptor_extractor_type[d] << " Models loaded, rounds: " << rounds << " ---------" << endl;
 
             // Rates of the current test image
             cv::Mat rates;
@@ -186,6 +198,7 @@ int main(int argc, char** argv)
             timing.write(ss.str());
         ss.str("");
 
+        // Storing rank-1 and nAUC in a single file for each descriptor used
         ss << conf.res_file_path << "rank1_N" << conf.persons_names.size() << "_PS" << conf.max_poses << "_O" << conf.occlusion_search;
         rank1_append_results(ss.str(), conf.descriptor_extractor_type[d], CMC);
         ss.str("");
@@ -194,6 +207,7 @@ int main(int argc, char** argv)
         nauc_append_result(ss.str(), conf.descriptor_extractor_type[d], nAUC);
         ss.str("");
 
+        // Show the percentage of images used for each person
         print_dataset_usage(masks);
     }
 

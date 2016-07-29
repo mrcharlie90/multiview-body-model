@@ -2,8 +2,9 @@
 // 
 //          IASLab License
 // 
-// This file contains all  methods deifinition of the MultiviewBodyModel class
+// This file contains all methods deifinition of the MultiviewBodyModel class
 // and the multiviewbodymodel namespace.
+//
 
 #include "MultiviewBodyModel.h"
 
@@ -138,8 +139,8 @@ namespace multiviewbodymodel {
         return ret;
     }
 
-    float MultiviewBodyModel::Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side, bool occlusion_search,
-                                        int norm_type, Timing &timing) {
+    float MultiviewBodyModel::Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences,
+                                    int test_pose_side, bool occlusion_search, int norm_type, Timing &timing) {
         // Check the model is ready
         assert(this->ready());
 
@@ -209,7 +210,7 @@ namespace multiviewbodymodel {
                 out_mask.push_back(2);
             }
             else {
-                // Test keypoint occluded or both occluded: discard the keypoints
+                // Test-frame's keypoint occluded or both occluded: discard the keypoints
                 out_mask.push_back(0);
             }
         }
@@ -217,7 +218,7 @@ namespace multiviewbodymodel {
 
 
     bool MultiviewBodyModel::get_descriptor_occluded(int keypoint_index, Mat &descriptor_occluded) {
-        // Find a non-occluded descriptor in one pose
+        // Find the first non-occluded descriptor in another pose
         for (int i = 0; i < pose_descriptors_.size(); ++i) {
             if (pose_confidences_[i][keypoint_index] > 0) {
                 descriptor_occluded = pose_descriptors_[i].row(keypoint_index);
@@ -249,8 +250,7 @@ namespace multiviewbodymodel {
     // ------------------------------------------------------------------------- //
 
     void read_skel_file(const string &skel_path, int keypoint_size,
-                        vector<cv::KeyPoint> &out_keypoints,
-                        vector<float> &out_confidences, int &out_pose_side) {
+                        vector<cv::KeyPoint> &out_keypoints, vector<float> &out_confidences, int &out_pose_side) {
         // File reading variables
         string line;
         std::ifstream file(skel_path);
@@ -261,7 +261,6 @@ namespace multiviewbodymodel {
 
         // Read the file line by line
         int i = 0;
-
         while (getline(file, line) && i < 15) {
             // Current line
             std::istringstream iss(line);
@@ -345,7 +344,6 @@ namespace multiviewbodymodel {
         cout << "MAX POSES: " << max_poses << endl;
         cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
     }
-
 
     void show_help() {
         cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize> -n <numberofposes>" << endl;
@@ -609,7 +607,7 @@ namespace multiviewbodymodel {
                         int keypoint_size, cv::Mat &out_image, vector<cv::KeyPoint> &out_keypoints,
                         vector<float> &out_confidences, cv::Mat &out_descriptors, int &out_pose_side, Timing &timing) {
 
-        double t_load_test = (timing.enabled) ? cv::getTickCount() : 0;
+        double t0_load_test = (timing.enabled) ? cv::getTickCount() : 0;
 
         read_skel_file(skel_path, keypoint_size, out_keypoints, out_confidences, out_pose_side);
 
@@ -624,7 +622,7 @@ namespace multiviewbodymodel {
         assert(out_descriptors.rows == out_confidences.size());
 
         if (timing.enabled) {
-            timing.t_tot_skel_loading += ((double)cv::getTickCount() - t_load_test) / cv::getTickFrequency();
+            timing.t_tot_skel_loading += ((double)cv::getTickCount() - t0_load_test) / cv::getTickFrequency();
             timing.n_tot_skel_loading++;
         }
     }
@@ -634,40 +632,29 @@ namespace multiviewbodymodel {
         // Required variables
         vector<cv::KeyPoint> tmp_keypoints(in_keypoints);
         cv::Mat tmp_descriptors;
-//        cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
-//        descriptor_extractor->compute(image, tmp_keypoints, tmp_descriptors);
 
         if (descriptor_extractor_type == "SIFT") {
-            // SIFT( int nfeatures=0, int nOctaveLayers=3,double contrastThreshold=0.04, double edgeThreshold=10,double sigma=1.6)
-            // migliorato con keypoint size più piccolo
             cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 15, 1.6);
             sift_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "SURF") {
-            // SURF(double hessianThreshold,int nOctaves=4, int nOctaveLayers=2, bool extended=true, bool upright=false);
-            // migliorato con upright = false
             cv::SurfDescriptorExtractor surf_extractor(0, 4, 2, true, true);
             surf_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "BRIEF") {
-            // bytes is a length of descriptor in bytes. It can be equal 16, 32 or 64 bytes.
             cv::BriefDescriptorExtractor brief_extractor(64);
             brief_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "ORB") {
-            // ORB(int nfeatures = 500, float scaleFactor = 1.2f, int nlevels = 8, int edgeThreshold = 31,
-            // int firstLevel = 0, int WTA_K=2, int scoreType=ORB::HARRIS_SCORE, int patchSize=31 );
             cv::OrbDescriptorExtractor orb_extractor(0, 0, 0, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
             orb_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "FREAK") {
-            // FREAK( bool orientationNormalized = true, bool scaleNormalized = true,
-            // float patternScale = 22.0f, int nOctaves = 4, const vector<int>& selectedPairs = vector<int>());
             cv::FREAK freak_extractor(true, true, 22.0f, 4, vector<int>());
             freak_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
 
-            // Once descriptors are computed, check if some keypoints are removed by the extractor algorithm
+        // Once descriptors are computed, check if some keypoints are removed by the extractor algorithm
         Mat descriptors(static_cast<int>(in_keypoints.size()), tmp_descriptors.cols, tmp_descriptors.type());
         out_descriptors = descriptors;
 
