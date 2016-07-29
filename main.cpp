@@ -14,17 +14,19 @@ using std::cout;
 using std::cerr;
 using std::endl;
 using cv::string;
+using multiviewbodymodel::RankElement;
 
 void test_replace();
 
+void test_memory_usage();
+
 int main(int argc, char** argv)
 {
+
     Configuration conf;
 
     if (argc < 7) {
-        cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize> -n <numberofposes>";
-        cout << "EXAMPLE: -c ../conf.xml -r ../res/ -d L2 -k 9 -ps 3" << endl;
-        exit(-1);
+        show_help();
     }
     else {
         parse_args(argc, argv, conf);
@@ -54,7 +56,6 @@ int main(int argc, char** argv)
     // when -L2 or -H flag is passed, a set of descriptors is computed
     // (Euclidean distance ones and Hamming distance ones respectively)
     for (int d = 0; d < conf.descriptor_extractor_type.size(); ++d) {
-
         // Used for storing a set of masks in which one of them marks (with 0 or 1) the pose
         // already chosen for the body model loading phase
         vector<cv::Mat> masks;
@@ -86,9 +87,9 @@ int main(int argc, char** argv)
             cv::Mat rates;
             rates = cv::Mat::zeros(1, static_cast<int>(conf.persons_names.size()), CV_32F);
 
-            // Match
-            for (int current_class = 0; current_class < rnd_indices.size(); ++current_class) {
-                for (int i = 0; i < rnd_indices[current_class].size(); ++i) {
+            // Match: extract indices
+            for (int current_class = 0; current_class < rnd_indices.size(); ++current_class) { // for each person
+                for (int i = 0; i < rnd_indices[current_class].size(); ++i) { // for each frame
                     // Required variables
                     cv::Mat test_image;
                     cv::Mat test_descriptors;
@@ -108,8 +109,8 @@ int main(int argc, char** argv)
                     std::priority_queue<RankElement<float>, vector<RankElement<float> >, RankElement<float> > scores;
                     for (int j = 0; j < models.size(); ++j) {
                         RankElement<float> rank_element;
-                        rank_element.score = models[j].Match(test_descriptors, test_confidences,
-                                                             test_pose_side, conf.occlusion_search);
+                        rank_element.score = models[j].Match(test_descriptors, test_confidences, test_pose_side,
+                                                             conf.occlusion_search, conf.norm_type, timing);
                         rank_element.classIdx = j;
                         scores.push(rank_element);
                     }
@@ -141,7 +142,7 @@ int main(int argc, char** argv)
                 double match_time = (cv::getTickCount() - t0_match) / cv::getTickFrequency();
                 double round_time = (cv::getTickCount() - t0_round) / cv::getTickFrequency();
                 // Averaged matching time
-                timing.t_tot_matching += round_time;
+                timing.t_rounds += round_time;
                 timing.n_rounds++;
 
                 timing.t_tot_exec = match_time;
@@ -170,7 +171,7 @@ int main(int argc, char** argv)
         << "_N" << conf.persons_names.size()
         << "_PS" << conf.max_poses
         << "_K" << conf.keypoint_size[d]
-        << "_RND";
+        << "_O" << conf.occlusion_search << "_RND";
         cmc2dat(ss.str(), CMC, nAUC);
         ss.str("");
 
@@ -179,9 +180,18 @@ int main(int argc, char** argv)
         << "_N" << conf.persons_names.size()
         << "_PS" << conf.max_poses
         << "_K" << conf.keypoint_size[d]
-        << "_RND";
+        << "_O" << conf.occlusion_search << "_RND";
+
         if (timing.enabled)
             timing.write(ss.str());
+        ss.str("");
+
+        ss << conf.res_file_path << "rank1_N" << conf.persons_names.size() << "_PS" << conf.max_poses << "_O" << conf.occlusion_search;
+        rank1_append_results(ss.str(), conf.descriptor_extractor_type[d], CMC);
+        ss.str("");
+
+        ss << conf.res_file_path << "nauc_N" << conf.persons_names.size() << "_PS" << conf.max_poses << "_O" << conf.occlusion_search;
+        nauc_append_result(ss.str(), conf.descriptor_extractor_type[d], nAUC);
         ss.str("");
 
         print_dataset_usage(masks);
@@ -206,6 +216,35 @@ void test_replace() {
 
     cv::Mat img = cv::imread("../ds/gianluca_sync/c00005.png");
     cout << mbm.Replace("../ds/gianluca_sync/c00005_skel.txt", img, "SURF", 9) << endl;
+
+    exit(0);
+}
+
+void test_memory_usage() {
+    // Testing replace function
+    MultiviewBodyModel mbm(1);
+    Timing t;
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00000_skel.txt",
+                       "../ds/gianluca_sync/c00000.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00001_skel.txt",
+                       "../ds/gianluca_sync/c00001.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00004_skel.txt",
+                       "../ds/gianluca_sync/c00004.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00009_skel.txt",
+                       "../ds/gianluca_sync/c00009.png", "SURF", 9, t);
+    mbm.ReadAndCompute("../ds/gianluca_sync/c00016_skel.txt",
+                       "../ds/gianluca_sync/c00016.png", "SURF", 9, t);
+
+    cout << mbm.size() << endl;
+    cout << mbm.get_size_of() << endl;
+    cout << sizeof(MultiviewBodyModel) << endl;
+
+    // MultiviewBodyModel: 128 byte
+    // size: 1 => 248 byte
+    // size: 2 => 492 byte
+    // size: 3 => 736 byte
+    // size: 4 => 980 byte
+    // size: 5 => 1224 byte
 
     exit(0);
 }

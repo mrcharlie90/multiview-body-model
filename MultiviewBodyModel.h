@@ -45,12 +45,16 @@ namespace  multiviewbodymodel {
         int n_tot_load_training_set;
 
         // Average time for one round in the main while
-        double t_tot_matching;
+        double t_rounds;
         int n_rounds;
 
         // Average time to compute the descriptors
-        double t_tot_descriptors;
-        int n_tot_descriptors;
+        double t_tot_extraction;
+        int n_tot_extraction;
+
+        // Average time to compute a frame-model match
+        double t_matching;
+        int n_matching;
 
         // Average Time to load one model
         double t_tot_model_loading;
@@ -92,8 +96,8 @@ namespace  multiviewbodymodel {
         // If the pose side value of the skeleton is greater than the max number of poses
         // it discards the reading and return -1
         //
-        // If the pose side is already loaded it returns 0, otherwise the pose is loaded and the value
-        // returned is 1.
+        // If the pose side is already loaded it returns 0
+        // otherwise load the pose and return 1.
         int ReadAndCompute(const string &skel_path, const string &img_path,
                            const string &descriptor_extractor_type, int keypoint_size, Timing &timing);
 
@@ -101,8 +105,8 @@ namespace  multiviewbodymodel {
         //
         // Returns
         //  -1 if the the pose value is greater than the maximum possible value
-        //   0 if the pose doesn't exist, then it added to the model
-        //   1 if the pose already exists, then it is replaced
+        //   0 if the pose doesn't exist, then it is added to the model
+        //   1 if the pose already exists, then it is replaced successfully
         int Replace(const string &skel_path, const cv::Mat &image, const string &descriptor_extractor_type,
                     int keypoint_size);
 
@@ -110,16 +114,23 @@ namespace  multiviewbodymodel {
         //
         // If occlusion_search is true (by default), a keypoint descriptor which is occluded is match 
         // with a descriptor in another view (the first one which has the descriptor visible).
-        float Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side,
-                    bool occlusion_search = true, int norm_type = cv::NORM_L2);
+        float Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side, bool occlusion_search,
+                            int norm_type, Timing &timing);
 
         // Returns true when all poses in the model are acquired successfully.
         // This means that the current pose_sides_ vector has size equal to max_poses
         bool ready();
 
+
+        // Returns the memory usage of the current object
+        int get_size_of();
+
+        // Returns the number of poses stored
+        int size();
+
     private:
-        // Creates a confidence match which defines the operation to execute
-        // when the following cases arises:
+        // Creates a confidence mask which defines the operation to execute
+        // when the following cases arise:
         // 1. both keypoints occluded
         // 2. one keypoint occluded and the other visible
         // 3. both keypoints visible
@@ -129,7 +140,7 @@ namespace  multiviewbodymodel {
         // 2. one keypoint occluded and the other visible => mask(i,j) = 1 -> Find the keypoint
         // occluded in the other views
         // 3. both keypoints visible => mask(i,j) = 2 -> Compute the distance between the keypoints
-        void create_confidence_mask(const vector<float> &query_confidences, const vector<float> &train_confidences,
+        void create_confidence_mask(const vector<float> &test_confidences, const vector<float> &train_confidences,
                                     vector<char> &out_mask);
 
         // Used in the matching function when one keypoint is occluded and the other
@@ -142,20 +153,20 @@ namespace  multiviewbodymodel {
         int max_poses_;
 
         // Pose number (i.e. 1:front, 2:back, 3:left-side, 4:right-side)
-        vector<int> pose_side_;
+        vector<int> pose_number_;
 
         // Contains keypoint's descriptors for each pose
-        vector<cv::Mat> views_descriptors_;
+        vector<cv::Mat> pose_descriptors_;
 
         // Keypoints for each pose
-        vector<vector<cv::KeyPoint> > views_keypoints_;
+        vector<vector<cv::KeyPoint> > pose_keypoints_;
 
         // Images of each pose loaded
-        vector<cv::Mat> views_images_;
+        vector<cv::Mat> pose_images_;
 
         // Confidence value in [0, 1] for each keypoint of each pose.
         // For now 1 means "keypoint visible" and 0 means "keypoint occluded"
-        vector<vector<float> > views_descriptors_confidences_;
+        vector<vector<float> > pose_confidences_;
     };
 
     // ------------------------------------------------------------------------- //
@@ -206,6 +217,9 @@ namespace  multiviewbodymodel {
     // Parse input arguments and initialize the configuration object.
     void parse_args(int argc, char **argv, Configuration &out_conf);
 
+    // Show the help for parameters settings
+    void show_help();
+
 
     // Gets the corresponding descriptor's norm type
     int get_norm_type(const char *descriptor_name);
@@ -254,7 +268,7 @@ namespace  multiviewbodymodel {
     // - the number of consecutive images with the previous element's pose side for i odd
     void get_poses_map(vector<vector<string> > train_paths, vector<vector<int> > &out_map);
 
-    // Exploit the map given from get_poses_map() method to return a sequence of indices for each person
+    // Exploit the map given from get_poses_map() to return a sequence of indices for each person
     // where the relative pose side is uniformly distribuited
     //
     // The number returned is the total number of indices produced
@@ -264,6 +278,10 @@ namespace  multiviewbodymodel {
     void saveCMC(string path, cv::Mat cmc);
 
     void cmc2dat(string path, cv::Mat cmc, float nAUC);
+
+    void rank1_append_results(string path, string desc_extractor, cv::Mat cmc);
+
+    void nauc_append_result(string path, string desc_extractor, float nauc);
 
     // Saves in a file mask.xml the set of mask used during models loading
     void save_mask(string d_name, vector<cv::Mat> masks);

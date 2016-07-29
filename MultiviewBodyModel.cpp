@@ -44,10 +44,10 @@ namespace multiviewbodymodel {
             return -1;
 
         // Check if the pose already exists...
-        vector<int>::iterator iter = find(pose_side_.begin(), pose_side_.end(), pose_side);
+        vector<int>::iterator iter = find(pose_number_.begin(), pose_number_.end(), pose_side);
 
-        // ...if so, fill the body model with data, otherwise do not consider this skeleton
-        if (iter == pose_side_.end()) {
+        // ...if not, fill the body model with data, otherwise do not consider this skeleton
+        if (iter == pose_number_.end()) {
             // Read image
             cv::Mat img = cv::imread(img_path);
             if (!img.data) {
@@ -62,16 +62,16 @@ namespace multiviewbodymodel {
             compute_descriptors(keypoints, img, descriptor_extractor_type, descriptors);
 
             if (timing.enabled) {
-                timing.t_tot_descriptors += ((double)cv::getTickCount() - ti_desc) / cv::getTickFrequency();
-                timing.n_tot_descriptors++;
+                timing.t_tot_extraction += ((double)cv::getTickCount() - ti_desc) / cv::getTickFrequency();
+                timing.n_tot_extraction++;
             }
 
             // Load data into the model
-            views_images_.push_back(img);
-            views_keypoints_.push_back(keypoints);
-            pose_side_.push_back(pose_side);
-            views_descriptors_.push_back(descriptors);
-            views_descriptors_confidences_.push_back(confidences);
+            pose_images_.push_back(img);
+            pose_keypoints_.push_back(keypoints);
+            pose_number_.push_back(pose_side);
+            pose_descriptors_.push_back(descriptors);
+            pose_confidences_.push_back(confidences);
 
             // The model has loaded the descriptors successfully
             ret = 1;
@@ -101,38 +101,35 @@ namespace multiviewbodymodel {
         if (pose_side > max_poses_)
             return -1;
 
-        // Check if the pose already exists...
-        vector<int>::iterator iter = find(pose_side_.begin(), pose_side_.end(), pose_side);
-        int index = static_cast<int>(iter - pose_side_.begin());
-
-        // Compute descriptors for this view
+        // Compute descriptors for this frame
         cv::Mat descriptors;
-        cv::Ptr<cv::DescriptorExtractor> descriptor_extractor = cv::DescriptorExtractor::create(descriptor_extractor_type);
-        descriptor_extractor->compute(img, keypoints, descriptors);
+        compute_descriptors(keypoints, img, descriptor_extractor_type, descriptors);
+
+        // Check if the pose already exists...
+        vector<int>::iterator iter = find(pose_number_.begin(), pose_number_.end(), pose_side);
+        int index = static_cast<int>(iter - pose_number_.begin());
 
         // ...if so, populate the body model with the data, otherwise discard the data
-        if (iter != pose_side_.end()) {
-
-            // Read image
+        if (iter != pose_number_.end()) {
             assert(img.data);
 
             // Update the model
-            views_images_[index] = img;
-            pose_side_[index] = pose_side;
-            views_descriptors_[index] = descriptors;
-            views_keypoints_[index] = keypoints;
-            views_descriptors_confidences_[index] = confidences;
+            pose_images_[index] = img;
+            pose_number_[index] = pose_side;
+            pose_descriptors_[index] = descriptors;
+            pose_keypoints_[index] = keypoints;
+            pose_confidences_[index] = confidences;
 
             // The model has replaced the descriptors successfully
             ret = 1;
         }
         else {
-            // Add it to the model, otherwise
-            views_images_.push_back(img);
-            views_keypoints_.push_back(keypoints);
-            pose_side_.push_back(pose_side);
-            views_descriptors_.push_back(descriptors);
-            views_descriptors_confidences_.push_back(confidences);
+            // Add frame information to the model
+            pose_images_.push_back(img);
+            pose_keypoints_.push_back(keypoints);
+            pose_number_.push_back(pose_side);
+            pose_descriptors_.push_back(descriptors);
+            pose_confidences_.push_back(confidences);
 
             // The model has loaded the descriptors successfully
             ret = 0;
@@ -141,24 +138,27 @@ namespace multiviewbodymodel {
         return ret;
     }
 
-    float MultiviewBodyModel::Match(const Mat &test_descriptors, const vector<float> &test_confidences,
-                                    int test_pose_side, bool occlusion_search, int norm_type) {
+    float MultiviewBodyModel::Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side, bool occlusion_search,
+                                        int norm_type, Timing &timing) {
         // Check the model is ready
         assert(this->ready());
 
+        // Timing
+        double ti_match = (timing.enabled) ? (double)cv::getTickCount() : 0;
+
         // Search for the corresponding pose side in this model
-        for (int i = 0; i < pose_side_.size(); ++i) {
-            if (pose_side_[i] == test_pose_side) {
+        for (int i = 0; i < pose_number_.size(); ++i) {
+            if (pose_number_[i] == test_pose_side) {
                 // Do the match, consindering the keypoint occlusion (by using confidences)
                 vector<char> confidence_mask;
 
-                // Mask used for defining the operation between keypoints occlusion cases
-                create_confidence_mask(test_confidences, views_descriptors_confidences_[i], confidence_mask);
+                // Mask used for defining the operation between keypoints occluded
+                create_confidence_mask(test_confidences, pose_confidences_[i], confidence_mask);
 
                 // Compute the average of the euclidean distances obtained among keypoints
                 float average_distance = 0.0;
                 int descriptors_count = 0;
-                for (int k = 0; k < views_descriptors_[i].rows; ++k) {
+                for (int k = 0; k < pose_descriptors_[i].rows; ++k) {
                     // Getting the operation to perform by the confidence mask
                     char operation = confidence_mask[k];
 
@@ -173,11 +173,17 @@ namespace multiviewbodymodel {
                         descriptors_count++;
                     }
                     else if (operation == 2) {
-                        dist = norm(test_descriptors.row(k), views_descriptors_[i].row(k), norm_type);
+                        dist = norm(test_descriptors.row(k), pose_descriptors_[i].row(k), norm_type);
                         average_distance += dist;
                         descriptors_count++;
                     }
                 }
+
+                if (timing.enabled) {
+                    timing.t_matching += ((double)cv::getTickCount() - ti_match) / cv::getTickFrequency();
+                    timing.n_matching++;
+                }
+
                 return average_distance / descriptors_count;
             }
         }
@@ -185,20 +191,20 @@ namespace multiviewbodymodel {
         return -1;
     }
 
-    bool MultiviewBodyModel::ready() { return pose_side_.size() == max_poses_; }
+    bool MultiviewBodyModel::ready() { return pose_number_.size() == max_poses_; }
 
-    void MultiviewBodyModel::create_confidence_mask(const vector<float> &query_confidences,
+    void MultiviewBodyModel::create_confidence_mask(const vector<float> &test_confidences,
                                                     const vector<float> &train_confidences,
                                                     vector<char> &out_mask) {
 
-        assert(query_confidences.size() == train_confidences.size());
+        assert(test_confidences.size() == train_confidences.size());
 
-        for (int k = 0; k < query_confidences.size(); ++k) {
-            if (query_confidences[k] > 0 && train_confidences[k] == 0) {
+        for (int k = 0; k < test_confidences.size(); ++k) {
+            if (test_confidences[k] > 0 && train_confidences[k] == 0) {
                 // Keypoint occluded in the training frame
                 out_mask.push_back(1);
             }
-            else if (query_confidences[k] > 0 && train_confidences[k] > 0) {
+            else if (test_confidences[k] > 0 && train_confidences[k] > 0) {
                 // Both keypoints visible
                 out_mask.push_back(2);
             }
@@ -212,16 +218,31 @@ namespace multiviewbodymodel {
 
     bool MultiviewBodyModel::get_descriptor_occluded(int keypoint_index, Mat &descriptor_occluded) {
         // Find a non-occluded descriptor in one pose
-        for (int i = 0; i < views_descriptors_.size(); ++i) {
-            if (views_descriptors_confidences_[i][keypoint_index] > 0) {
-                descriptor_occluded = views_descriptors_[i].row(keypoint_index);
+        for (int i = 0; i < pose_descriptors_.size(); ++i) {
+            if (pose_confidences_[i][keypoint_index] > 0) {
+                descriptor_occluded = pose_descriptors_[i].row(keypoint_index);
                 return true;
             }
         }
         return false;
     }
 
+    int MultiviewBodyModel::size() {
+        return pose_number_.size();
+    }
 
+    int MultiviewBodyModel::get_size_of() {
+        int usage  = 0;
+        usage += sizeof(max_poses_);
+        for (int i = 0; i < pose_number_.size(); ++i) {
+            usage += sizeof(pose_number_[i]);
+            usage += sizeof(pose_descriptors_[i]);
+            usage += sizeof(pose_keypoints_[i]);
+            usage += sizeof(pose_images_[i]);
+            usage += sizeof(pose_confidences_[i]);
+        }
+        return usage;
+    }
 
     // ------------------------------------------------------------------------- //
     //                           Function definitions                            //
@@ -325,12 +346,32 @@ namespace multiviewbodymodel {
         cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
     }
 
+
+    void show_help() {
+        cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize> -n <numberofposes>" << endl;
+        cout << "EXAMPLE: $/multiviewbodymodel -c ../conf.xml -r ../res/ -d L2 -ps 3" << endl;
+        cout << "<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>"
+             << endl;
+        cout << "-c         path to the configuration file, it must be a valid .xml file." << endl;
+        cout << "-r         path to the directory where the resutls are stored, must be already created." << endl;
+        cout << "-d         descriptor to use: choose between SIFT, SURF, ORB, FREAK, BRIEF." << endl <<
+                "           You must specify the keypoint size with -k flag." << endl <<
+                "           If you want to compute the predefined descriptors choose:" << endl <<
+                "             H for descriptor with Hamming distance (ORB, FREAK, BRIEF)" << endl <<
+                "             L2 for descriptor with Euclidean distance (SIFT, SURF)" << endl <<
+                "           then you don't need to specify the keypoint size." << endl;
+        cout << "-k         set the keypoint size" << endl;
+        cout << "-ps        set the number of pose sides" << endl;
+        exit(0);
+    }
+
     void parse_args(int argc, char **argv, Configuration &out_conf) {
         std::stringstream ss;
 
         // Default values
         out_conf.conf_file_path = "../conf.xml";
         out_conf.res_file_path = "../res/";
+
 
         for (int i = 1; i < argc; ++i) {
             if (i != argc) {
@@ -485,8 +526,6 @@ namespace multiviewbodymodel {
     bool load_models(const vector<vector<string> > &train_skels_paths, const vector<vector<string> > &train_imgs_paths,
                          const string &descriptor_extractor_type, int keypoint_size, int max_poses, vector<cv::Mat> &masks,
                          vector<MultiviewBodyModel> &out_models, Timing &timing) {
-
-
         // Initialize time
         double t0 = timing.enabled ? static_cast<double>(cv::getTickCount()) : 0;
 
@@ -508,18 +547,17 @@ namespace multiviewbodymodel {
                     max_size_idx = k;
             }
 
-
             int current_image = 0;
             // number of images inserted
             // NOTE: if the image was already chosen for the matching then masks[i].at(0, j) > 0 , otherwise 0
             int non_zero_counter = countNonZero(masks[i].row(0));
 
             // Accept poses only with this value in the mask's element
-            // (images could be chosen several times, than value >= 1)
+            // (images could be chosen several times, then value >= 1)
             int value = 0;
 
             // The loop continue until the maximum size mask has all elements greater than 0
-            while (!body_model.ready() && non_zero_counter <= train_imgs_paths[max_size_idx].size()) {
+            while (!body_model.ready() && non_zero_counter < train_imgs_paths[max_size_idx].size()) {
 
                 // Storing the current mask's element pointer for later use
                 char *mask_elem = &masks[i].row(0).at<char>(current_image);
@@ -601,37 +639,30 @@ namespace multiviewbodymodel {
 
         if (descriptor_extractor_type == "SIFT") {
             // SIFT( int nfeatures=0, int nOctaveLayers=3,double contrastThreshold=0.04, double edgeThreshold=10,double sigma=1.6)
-            // best keypoint size 3
             // migliorato con keypoint size più piccolo
             cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 15, 1.6);
             sift_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "SURF") {
             // SURF(double hessianThreshold,int nOctaves=4, int nOctaveLayers=2, bool extended=true, bool upright=false);
-            // best keypoint size 11
-//            CMC: [0.40492955, 0.56266665, 0.67962509, 0.77331567, 0.85558635, 0.93290806, 1]
-//            nAUC: 64.3795
             // migliorato con upright = false
             cv::SurfDescriptorExtractor surf_extractor(0, 4, 2, true, true);
             surf_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "BRIEF") {
             // bytes is a length of descriptor in bytes. It can be equal 16, 32 or 64 bytes.
-            // keypoint size 11
             cv::BriefDescriptorExtractor brief_extractor(64);
             brief_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "ORB") {
             // ORB(int nfeatures = 500, float scaleFactor = 1.2f, int nlevels = 8, int edgeThreshold = 31,
             // int firstLevel = 0, int WTA_K=2, int scoreType=ORB::HARRIS_SCORE, int patchSize=31 );
-            // best keypoint size 9
             cv::OrbDescriptorExtractor orb_extractor(0, 0, 0, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
             orb_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
         else if (descriptor_extractor_type == "FREAK") {
             // FREAK( bool orientationNormalized = true, bool scaleNormalized = true,
             // float patternScale = 22.0f, int nOctaves = 4, const vector<int>& selectedPairs = vector<int>());
-            // best keypoint size = 3
             cv::FREAK freak_extractor(true, true, 22.0f, 4, vector<int>());
             freak_extractor.compute(image, tmp_keypoints, tmp_descriptors);
         }
@@ -800,8 +831,9 @@ namespace multiviewbodymodel {
         cv::FileStorage fs(name + ".xml", cv::FileStorage::WRITE);
         if(fs.isOpened()) {
             fs << "avgLoadingTrainingSet" << (t_tot_load_training_set / n_tot_load_training_set);
-            fs << "avgMatch" << (t_tot_matching / n_rounds);
-            fs << "avgDescriptorsComputation" << (t_tot_descriptors / n_tot_descriptors);
+            fs << "avgExctraction" << (t_tot_extraction / n_tot_extraction);
+            fs << "avgMatch" << (t_matching / n_matching);
+            fs << "avgRound" << (t_rounds / n_rounds);
             fs << "avgOneModelLoading" << (t_tot_model_loading / n_tot_model_loading);
             fs << "avgSkelLoading" << (t_tot_skel_loading / n_tot_skel_loading);
             fs << "totExec" << t_tot_exec;
@@ -815,8 +847,8 @@ namespace multiviewbodymodel {
     void multiviewbodymodel::Timing::show() {
         cout << "----------------- PERFORMANCE -----------------" << endl;
         cout << "avgLoadingTrainingSet " << (t_tot_load_training_set / n_rounds);
-        cout << "avgOneRound " << (t_tot_matching / n_rounds);
-        cout << "avgDescriptorsComputation " << (t_tot_descriptors / n_tot_descriptors);
+        cout << "avgOneRound " << (t_rounds / n_rounds);
+        cout << "avgDescriptorsComputation " << (t_tot_extraction / n_tot_extraction);
         cout << "avgOneModelLoading " << (t_tot_model_loading / n_tot_model_loading);
         cout << "avgSkelLoading " << (t_tot_skel_loading / n_tot_skel_loading);
         cout << "totMatching " << t_tot_exec;
@@ -855,10 +887,28 @@ namespace multiviewbodymodel {
         else
             cerr << endl << "saveCMC(): Cannot open the file!" << endl;
 
-        file << path << " nAUC: " << nAUC * 100 << "%" << endl;
-
         file.close();
         cout << "done!" << endl;
+    }
+
+    void rank1_append_results(string path, string desc_extractor, cv::Mat cmc) {
+        std::ofstream file(path + ".dat", std::ofstream::app);
+        if (file.is_open()) {
+            file << desc_extractor << "   " << cmc.at<float>(0, 0) * 100 << endl;
+        }
+        else
+            cerr << endl << "rank1_append_results(): Cannot open the file!" << endl;
+        file.close();
+    }
+
+    void nauc_append_result(string path, string desc_extractor, float nauc) {
+        std::ofstream file(path + ".dat", std::ofstream::app);
+        if (file.is_open()) {
+            file << desc_extractor << "   " << nauc * 100 << endl;
+        }
+        else
+            cerr << endl << "nauc_append_results(): Cannot open the file!" << endl;
+        file.close();
     }
 
     void print_dataset_usage(vector<cv::Mat> masks) {
