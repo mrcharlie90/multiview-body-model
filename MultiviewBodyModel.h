@@ -4,7 +4,7 @@
 //
 // Contains the MultiviewBodyModel class definition and some utility functions
 // which can be used for loading skeletons and for saving results.
-// 
+//
 // Some utility structures such as Timing and Configuration are used for  logging
 // performance and for loading settings.
 
@@ -24,273 +24,184 @@
 
 
 namespace  multiviewbodymodel {
-    using std::vector;
-    using cv::string;
-
-    // Used for performance logging.
-    // Each field stores a timing value named according to the
-    // methods it is used in.
-    //
-    // Call enable() before use
-    // Each methods checks the enabled flag to decide when
-    // to store performance or not.
-    // 
-    // write() save the results in a file named timing.xml
-    struct Timing {
-        // All methods reads this flag to check wether
-        // the stats logging are active
-        bool enabled;
-        // Average time for loading the training set
-        double t_tot_load_training_set;
-        int n_tot_load_training_set;
-
-        // Average time for one round in the main while
-        double t_rounds;
-        int n_rounds;
-
-        // Average time to compute the descriptors
-        double t_tot_extraction;
-        int n_tot_extraction;
-
-        // Average time to compute a frame-model match
-        double t_matching;
-        int n_matching;
-
-        // Average Time to load one model
-        double t_tot_model_loading;
-        int n_tot_model_loading;
-
-        // Average time to compute the skeleton descriptors
-        double t_tot_skel_loading;
-        int n_tot_skel_loading;
-
-        // Overall time to compute the matching
-        double t_tot_exec;
-
-        void enable() {
-            enabled = true;
-        }
-
-        // Writes all stats values in a file named timing.xml
-        void write(string name);
-
-        // Show the all the stats value on the console
-        void show();
-    };
-
-    // Models a skeleton of one person seen in a scene captured by several cameras.
-    // One person is characterized by a number of pose sides (computed from a skeletal tracker,
-    // for example) which are used to re-identify a person body seen in the scene.
-    class MultiviewBodyModel {
-    public:
-        // Sets maximum number of poses the model should contain.
-        // The model cannot accept a poses' value greater than this value.
-        // Example: if the skeletal tracker outputs
-        // 1 for left-side, 2 for right side and 3 for front-side
-        // set max_poses to 3
-        MultiviewBodyModel(int max_poses);
-
-        // Loads a model from an image and skel file.
-        // It extract each keypoint descriptor for each pose and store the results in the model.
-        //
-        // If the pose side value of the skeleton is greater than the max number of poses
-        // it discards the reading and return -1
-        //
-        // If the pose side is already loaded it returns 0
-        // otherwise load the pose and return 1.
-        int ReadAndCompute(const string &skel_path, const string &img_path,
-                           const string &descriptor_extractor_type, int keypoint_size, Timing &timing);
-
-        // Replace one skeleton pose side inside a model.
-        //
-        // Returns
-        //  -1 if the the pose value is greater than the maximum possible value
-        //   0 if the pose doesn't exist, then it is added to the model
-        //   1 if the pose already exists, then it is replaced successfully
-        int Replace(const string &skel_path, const cv::Mat &image, const string &descriptor_extractor_type,
-                    int keypoint_size);
-
-        // Search for the same pose side in the model and computes the match.
-        //
-        // If occlusion_search is true (by default), a keypoint descriptor which is occluded is match 
-        // with a descriptor in another view (the first one which has the descriptor visible).
-        //
-        // Returns the euclidean or Hamming distance, otherwise -1 if the pose is not present in the model.
-        float Match(const cv::Mat &test_descriptors, const vector<float> &test_confidences, int test_pose_side, bool occlusion_search,
-                            int norm_type, Timing &timing);
-
-        // Returns true when all poses in the model are acquired successfully.
-        // This means that the current pose_sides_ vector has size equal to max_poses
-        bool ready();
-
-        // Returns the memory usage of the current object
-        int get_size_of();
-
-        // Returns the number of poses stored
-        int size();
-
-    private:
-        // Creates a confidence mask which defines the operation to execute
-        // when the following cases arise:
-        // 1. both keypoints occluded
-        // 2. one keypoint occluded and the other visible
-        // 3. both keypoints visible
-        //
-        // out_mask is defined in this way (relative to the i-th person):
-        // 1. both j-th keypoints occluded => out_mask(i,j) = 0 (Don't consider keypoints)
-        // 2. one j-th keypoint is occluded and the other visible => out_mask(i,j) = 1 -> Find the keypoint
-        //                                                                                occluded in the other views
-        // 3. both j-th keypoints are visible => out_mask(i,j) = 2 -> Compute the distance between the keypoints
-        void create_confidence_mask(const vector<float> &test_confidences, const vector<float> &train_confidences,
-                                    vector<char> &out_mask);
-
-        // Used in the matching function when one keypoint is occluded and the other
-        // is visible.
-        // Returns true if a non-occluded keypoint's descriptors are found, false otherwise
-        bool  get_descriptor_occluded(int keypoint_index, cv::Mat &descriptor_occluded);
-
-        // The maximum number of poses the model should accept
-        int max_poses_;
-
-        // Pose number (i.e. 1:front, 2:back, 3:left-side, 4:right-side)
-        vector<int> pose_number_;
-
-        // Contains keypoint's descriptors for each pose
-        vector<cv::Mat> pose_descriptors_;
-
-        // Keypoints for each pose
-        vector<vector<cv::KeyPoint> > pose_keypoints_;
-
-        // Images of each pose loaded
-        vector<cv::Mat> pose_images_;
-
-        // Confidence value in [0, 1] for each keypoint of each pose.
-        // For now 1 means "keypoint visible" and 0 means "keypoint occluded"
-        vector<vector<float> > pose_confidences_;
-    };
-
-    // ------------------------------------------------------------------------- //
-    //                           Functions declarations                          //
-    // ------------------------------------------------------------------------- //
-
-    // Read the skeleton file:
-    // returns a vector of keypoints, a vector of confidences and the pose side of the skeleton
-    void read_skel_file(const string &skel_path, int keypoint_size, vector<cv::KeyPoint> &out_keypoints,
-                        vector<float> &out_confidences, int &out_pose_side);
+// Used for performance logging.
+// Each field stores a timing value named according to the
+// methods it is used in.
+//
+// Call enable() before use
+// Each methods checks the enabled flag to decide when
+// to store performance or not.
+//
+// write() save the results in a file named timing.xml
+struct Timing {
+    // All methods reads this flag to check wether
+    // the stats logging are active
+    bool enabled;
 
 
-    // Element used for storing the ground truth class of the current frame with
-    // the relative score obtained from the matching function.
-    template<typename T>
-    struct RankElement {
-        int classIdx;
-        T score;
+    // Overall time to compute the matching
+    double t_tot_exec;
 
-        // Comparator for the priority queue
-        bool operator()(const RankElement<T> &re1, const RankElement<T> &re2) {
-            return re1.score > re2.score;
-        }
-    };
+    void enable() {
+        enabled = true;
+    }
 
-    // Group all the necessary information for obtaining training(testing) files
-    // and the functions' parameters.
-    struct Configuration {
-        // From the conf file
-        string conf_file_path;
-        string res_file_path;
-        string main_path;
-        vector<string> persons_names;
-        vector<string> views_names;
-        cv::Mat num_images;
-        int max_poses;
+    // Writes all stats values in a file named timing.xml
+    void write(cv::string name);
 
-        // From the command line
-        vector<string> descriptor_extractor_type;
-        int norm_type;
-        vector<int> keypoint_size;
-        bool occlusion_search;
+    // Show the all the stats value on the console
+    void show();
+};
 
-        // Shows the parameters loaded from the console and from the config.xml file
-        void show();
-    };
+enum OcclusionType {
+    BOTHOCCLUDED,
+    FRAMEOCCLUDED,
+    MODELOCCLUDED,
+    VISIBLE
+};
 
-    // Parse input arguments and initialize the configuration object.
-    void parse_args(int argc, char **argv, Configuration &out_conf);
+// Models a skeleton of one person seen in a scene captured by several cameras.
+// One person is characterized by a number of pose sides (computed from a skeletal tracker,
+// for example) which are used to re-identify a person body seen in the scene.
+class MultiviewBodyModel {
+public:
+    void read_pose_compute_descriptors(cv::string img_path, cv::string skel_path,
+                                       int keypoint_size, cv::string descriptor_extractor_type,
+                                       Timing &timing);
 
-    // Show the help for parameters settings
-    void show_help();
+    float match(const cv::Mat &frame_desc, int frame_ps, const std::vector<float> &frame_conf, int norm_type,
+                    bool occlusion_search, const cv::Mat &poses_map, const cv::Mat &kp_map,
+                    const cv::Mat &kp_weights, const cv::Mat &ps2keypoints_map, Timing &timing);
 
-    // Gets the corresponding descriptor's norm type
-    // Returns -1 if a invalid descriptor name is given
-    int get_norm_type(const char *descriptor_name);
 
-    // Checks if the file node fn is a sequence, used only in parse_args()
-    void check_sequence(cv::FileNode fn);
+private:
+    OcclusionType check_occlusion(float frame_conf, float model_conf);
 
-    // Creates two vectors containing all the paths to the skeleton and image files grouped by person
-    void load_train_paths(const string &main_path, const vector <string> &persons_names,
-                          const vector <string> &views_names, const cv::Mat &num_images,
-                          vector<vector<string> > &out_imgs_paths, vector<vector<string> > &out_skel_paths);
+    void occlusion_norm(const cv::Mat &frame_desc, int model_ps, int model_kp_idx,
+                                            const cv::Mat &model_poses_map, const cv::Mat &model_ps2keypoints_map,
+                                            const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights, int norm_type,
+                                            double &out_weighted_distance, double &out_tot_weight);
 
-    void load_train_paths(const Configuration &conf, vector<vector<string> > &out_skels_paths,
-                          vector<vector<string> > &out_imgs_paths);
 
-    // Loads one model from images chosen sequentially in the training set
-    // A set of masks is used to check which images have already been chosen for each person
-    // One mask's element masks[i].col(j) is a counter which tells how many times the relative image is considered
-    //
-    // out_models is a vector of body models with all poses loaded and the relative descriptors computed.
-    bool load_models(const vector <vector<string> > &train_skels_paths, const vector <vector<string> > &train_imgs_paths,
-                     const string &descriptor_extractor_type, int keypoint_size, int max_poses,
-                     vector <cv::Mat> &masks, vector <MultiviewBodyModel> &out_models, Timing &timing);
+    void create_descriptor_from_poses(int pose_not_found, const cv::Mat &model_poses_map,
+                                          const cv::Mat &model_ps2keypoints_map,
+                                          const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights,
+                                          cv::Mat out_model_descriptors, cv::Mat out_descriptors_weights,
+                                          cv::Mat keypoints_mask);
+    // Pose number (i.e. 1:front, 2:back, 3:left-side, 4:right-side)
+    std::vector<int> pose_number_;
 
-    // Loads one image skeleton, used in the testing phase to load the test image
-    // Returns the keypoints and confidences read from the skel file and the descriptors computed from the keypoints pose a
-    void load_test_skel(const string &skel_path, const string &img_path, const string &descriptor_extractor_type,
-                        int keypoint_size, cv::Mat &out_image, vector <cv::KeyPoint> &out_keypoints,
-                        vector<float> &out_confidences, cv::Mat &out_descriptors, int &out_pose_side, Timing &timing);
+    // Contains descriptors for each keypoint stored
+    std::vector<cv::Mat> pose_descriptors_;
 
-    // Computes descriptors using the given descriptor extractor type.
-    // If a descriptor could not be computed in the corresponding keypoint, a zero-row is inserted.
-    void compute_descriptors(const vector<cv::KeyPoint> &in_keypoints, const cv::Mat &image,
-                             const string &descriptor_extractor_type, cv::Mat &out_descriptors);
+    // Keypoints for each pose
+    std::vector<std::vector<cv::KeyPoint> > pose_keypoints_;
 
-    // Returns the index in the queue of the element with the class equal to test_class
-    template<typename T>
-    int get_rank_index(std::priority_queue<RankElement<T>, vector<RankElement<T> >, RankElement<T> > pq,
-                                            int test_class);
+    // Confidence value in [0, 1] for each keypoint of each pose.
+    // For now 1 means "keypoint visible" and 0 means "keypoint occluded"
+    std::vector<std::vector<float> > pose_confidences_;
+};
 
-    // Reads the pose side in the file specified by the path string
-    int get_pose_side(string path);
+// ------------------------------------------------------------------------- //
+//                           Functions declarations                          //
+// ------------------------------------------------------------------------- //
 
-    // Returns a set of vectors where each element v[i] store
-    // - a pose side number for i is even
-    // - the number of consecutive images with the previous element's pose side for i odd
-    void get_poses_map(vector<vector<string> > train_paths, vector<vector<int> > &out_map);
+// Element used for storing the ground truth class of the current frame with
+// the relative score obtained from the matching function.
+template<typename T>
+struct PQRank {
+    int class_idx;
+    T score;
 
-    // Exploit the map given from get_poses_map() to return a sequence of indices for each person
-    // where the relative pose side is uniformly distribuited
-    //
-    // The number returned is the total number of indices produced
-    int get_rnd_indices(vector <vector<int> > map, int max_poses, vector <vector<int> > &out_rnd_indices);
+    // Comparator for the priority queue
+    bool operator()(const PQRank<T> &pqr1, const PQRank<T> &pqr2) {
+        return pqr1.score > pqr2.score;
+    }
+};
 
-    // Saves the CMC curve in a file
-    void saveCMC(string path, cv::Mat cmc);
+// Group all the necessary information for obtaining training(testing) files
+// and the functions' parameters.
+struct Configuration {
+    // From the conf file
+    cv::string conf_file_path;
+    cv::string res_file_path;
+    cv::string main_path;
+    std::vector<cv::string> persons_names;
+    std::vector<cv::string> views_names;
+    int keypoints_number;
+    cv::Mat num_images;
+    int max_poses;
 
-    // Saves the CMC in a dat file
-    void cmc2dat(string path, cv::Mat cmc, float nAUC);
+    // From the command line
+    std::vector<cv::string> descriptor_extractor_type;
+    int norm_type;
+    std::vector<int> keypoint_size;
+    bool occlusion_search;
 
-    // Append the current descriptor rank-1 results to the same file
-    void rank1_append_results(string path, string desc_extractor, cv::Mat cmc);
+    // Shows the parameters loaded from the console and from the config.xml file
+    void show();
+};
 
-    // Append the current descriptor nAUC results to the same file
-    void nauc_append_result(string path, string desc_extractor, float nauc);
+// Parse input arguments and initialize the configuration object.
+void parse_args(int argc, char **argv, Configuration &out_conf);
 
-    // Saves in a file mask.xml the set of mask used during models loading
-    void save_mask(string d_name, vector<cv::Mat> masks);
+// Show the help for parameters settings
+void show_help();
 
-    // Print the percentage of frame used in the dataset
-    void print_dataset_usage(vector<cv::Mat> masks);
+// Gets the corresponding descriptor's norm type
+// Returns -1 if a invalid descriptor name is given
+int get_norm_type(const char *descriptor_name);
+
+// Checks if the file node fn is a sequence, used only in parse_args()
+void check_sequence(cv::FileNode fn);
+
+void read_skel_file(const cv::string &skel_path, int keypoint_size,
+                    std::vector<cv::KeyPoint> &out_keypoints,
+                    std::vector<float> &out_confidences,
+                    int &out_pose_side);
+
+void compute_descriptors(const std::string &img_path, const std::vector<cv::KeyPoint> &in_keypoints,
+                         const cv::string &descriptor_extractor_type, cv::Mat &out_descriptors);
+
+int factorial(int n);
+
+// Returns the index in the queue of the element with the class equal to test_class
+template<typename T>
+int get_rank_index(std::priority_queue<PQRank<T>, std::vector<PQRank<T> >, PQRank<T> > pq, int test_class);
+
+
+
+/**
+ * NEW
+ */
+
+/**
+ * Load images paths
+ * @param conf configuration object
+ * @param out_imgs_paths paths to images
+ * @param out_skels_paths paths to skeletons files
+ */
+void load_person_imgs_paths(const Configuration &conf, std::vector<std::vector<cv::string> > &out_imgs_paths,
+                            std::vector<std::vector<cv::string> > &out_skels_paths);
+
+/**
+ *
+ * @param skels_paths
+ * @param masks
+ */
+template <typename T>
+void load_masks(const std::vector<std::vector<T> > &skels_paths,
+               std::vector<cv::Mat> &masks);
+
+int load_models_set(std::vector<int> &poses, std::vector<std::vector<cv::string> > img_paths,
+                    std::vector<std::vector<cv::string> > skels_paths, int num_skel_keypoints, int max_size,
+                    int min_keypoints_visibles, std::vector<std::vector<int> > &out_model_set);
+
+int get_total_keyponts_visible(const std::string &skel_path, int num_keypoints);
+
+void tokenize(const std::string &line, char delim, std::vector<cv::string> &out_tokens);
+
+int get_pose_side(cv::string path);
 
 }
 #endif // MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H
