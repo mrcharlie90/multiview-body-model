@@ -53,12 +53,54 @@ struct Timing {
     void show();
 };
 
+
 enum OcclusionType {
     BOTHOCCLUDED,
     FRAMEOCCLUDED,
     MODELOCCLUDED,
     VISIBLE
 };
+
+enum DescriptorType {
+    SIFT,
+    SURF,
+    ORB,
+    FREAK,
+    BRIEF,
+    INVALID
+};
+
+// Group all the necessary information for obtaining training(testing) files
+// and the functions' parameters.
+struct Configuration {
+    // From the conf file
+    cv::string conf_file_path;
+    cv::string res_file_path;
+    cv::string main_path;
+    std::vector<cv::string> persons_names;
+    std::vector<cv::string> views_names;
+    int keypoints_number;
+    cv::Mat num_images;
+    std::vector<int> poses;
+
+    // Configuration Matrices
+    cv::Mat poses_map;
+    cv::Mat poses2kp_map;
+    cv::Mat kp_map;
+    cv::Mat kp_weights;
+
+    // From the command line
+    cv::string descriptor_type_str;
+    DescriptorType descriptor_type;
+    int norm_type;
+    int keypoint_size;
+    bool occlusion_search;
+
+    // Shows the parameters loaded from the console and from the config.xml file
+    void show();
+};
+
+
 
 // Models a skeleton of one person seen in a scene captured by several cameras.
 // One person is characterized by a number of pose sides (computed from a skeletal tracker,
@@ -69,10 +111,12 @@ public:
                                        int keypoint_size, cv::string descriptor_extractor_type,
                                        Timing &timing);
 
-    float match(const cv::Mat &frame_desc, int frame_ps, const std::vector<float> &frame_conf, int norm_type,
+    float match(const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf, int norm_type,
                     bool occlusion_search, const cv::Mat &poses_map, const cv::Mat &kp_map,
                     const cv::Mat &kp_weights, const cv::Mat &ps2keypoints_map, Timing &timing);
 
+    float match(const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf,
+                bool occlusion_search, Configuration &conf, Timing &timing);
 
 private:
     OcclusionType check_occlusion(float frame_conf, float model_conf);
@@ -84,10 +128,10 @@ private:
 
 
     void create_descriptor_from_poses(int pose_not_found, const cv::Mat &model_poses_map,
-                                          const cv::Mat &model_ps2keypoints_map,
-                                          const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights,
-                                          cv::Mat out_model_descriptors, cv::Mat out_descriptors_weights,
-                                          cv::Mat keypoints_mask);
+                                      const cv::Mat &model_ps2keypoints_map,
+                                      const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights,
+                                      cv::Mat &out_model_descriptors, cv::Mat &out_descriptors_weights,
+                                      cv::Mat &keypoints_mask);
     // Pose number (i.e. 1:front, 2:back, 3:left-side, 4:right-side)
     std::vector<int> pose_number_;
 
@@ -119,38 +163,20 @@ struct PQRank {
     }
 };
 
-// Group all the necessary information for obtaining training(testing) files
-// and the functions' parameters.
-struct Configuration {
-    // From the conf file
-    cv::string conf_file_path;
-    cv::string res_file_path;
-    cv::string main_path;
-    std::vector<cv::string> persons_names;
-    std::vector<cv::string> views_names;
-    int keypoints_number;
-    cv::Mat num_images;
-    int max_poses;
 
-    // From the command line
-    std::vector<cv::string> descriptor_extractor_type;
-    int norm_type;
-    std::vector<int> keypoint_size;
-    bool occlusion_search;
-
-    // Shows the parameters loaded from the console and from the config.xml file
-    void show();
-};
 
 // Parse input arguments and initialize the configuration object.
 void parse_args(int argc, char **argv, Configuration &out_conf);
 
+void read_config_file(Configuration &configuration);
+
+DescriptorType char2descriptor_type(const char *str);
 // Show the help for parameters settings
 void show_help();
 
 // Gets the corresponding descriptor's norm type
 // Returns -1 if a invalid descriptor name is given
-int get_norm_type(const char *descriptor_name);
+int get_norm_type(DescriptorType descriptor_type);
 
 // Checks if the file node fn is a sequence, used only in parse_args()
 void check_sequence(cv::FileNode fn);
@@ -175,33 +201,29 @@ int get_rank_index(std::priority_queue<PQRank<T>, std::vector<PQRank<T> >, PQRan
  * NEW
  */
 
-/**
- * Load images paths
- * @param conf configuration object
- * @param out_imgs_paths paths to images
- * @param out_skels_paths paths to skeletons files
- */
-void load_person_imgs_paths(const Configuration &conf, std::vector<std::vector<cv::string> > &out_imgs_paths,
-                            std::vector<std::vector<cv::string> > &out_skels_paths);
+int load_person_imgs_paths(const Configuration &conf, std::vector<std::vector<cv::string> > &out_imgs_paths,
+                           std::vector<std::vector<cv::string> > &out_skels_paths);
 
-/**
- *
- * @param skels_paths
- * @param masks
- */
 template <typename T>
 void load_masks(const std::vector<std::vector<T> > &skels_paths,
                std::vector<cv::Mat> &masks);
 
-int load_models_set(std::vector<int> &poses, std::vector<std::vector<cv::string> > img_paths,
-                    std::vector<std::vector<cv::string> > skels_paths, int num_skel_keypoints, int max_size,
-                    int min_keypoints_visibles, std::vector<std::vector<int> > &out_model_set);
+int load_models_set(std::vector<int> &poses, const std::vector<std::vector<cv::string> > img_paths,
+                    const std::vector<std::vector<cv::string> > skels_paths, int max_size, int min_keypoints_visibles,
+                    std::vector<std::vector<int> > &out_model_set);
 
 int get_total_keyponts_visible(const std::string &skel_path, int num_keypoints);
 
 void tokenize(const std::string &line, char delim, std::vector<cv::string> &out_tokens);
 
 int get_pose_side(cv::string path);
+
+void empty_models(int size, std::vector<MultiviewBodyModel> &models);
+
+void init_models(Configuration conf, int rounds, const std::vector<std::vector<std::string> > imgs_paths,
+                 const std::vector<std::vector<std::string> > skels_paths,
+                 const std::vector<std::vector<int> > &models_set,
+                 std::vector<MultiviewBodyModel> &models, Timing &timing);
 
 }
 #endif // MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H

@@ -21,6 +21,7 @@ using cv::Mat;
 using cv::Range;
 using cv::KeyPoint;
 using cv::norm;
+using cv::FileNodeIterator;
 
 // ------------------------------------------------------------------------- //
 //                           Methods definitions                             //
@@ -28,7 +29,6 @@ using cv::norm;
 
 void MultiviewBodyModel::read_pose_compute_descriptors(string img_path, string skel_path, int keypoint_size,
                                                        string descriptor_extractor_type, Timing &timing) {
-    Mat img;
     Mat descriptors;
     vector<KeyPoint> keypoints;
     vector<float> confidences;
@@ -61,7 +61,7 @@ void MultiviewBodyModel::read_pose_compute_descriptors(string img_path, string s
 }
 
 float
-MultiviewBodyModel::match(const Mat &frame_desc, int frame_ps, const vector<float> &frame_conf, int norm_type,
+MultiviewBodyModel::match(const Mat &frame_descriptors, int frame_ps, const vector<float> &frame_conf, int norm_type,
                           bool occlusion_search, const Mat &poses_map, const Mat &kp_map, const Mat &kp_weights,
                           const Mat &ps2keypoints_map, Timing &timing) {
     assert(pose_descriptors_.size() > 0);
@@ -70,8 +70,8 @@ MultiviewBodyModel::match(const Mat &frame_desc, int frame_ps, const vector<floa
     assert(kp_map.rows > 0 && kp_map.rows == kp_weights.rows);
 
     // Output distance
-    double sum_dist = 0.0f;
-    int sum_W = 0;
+    float sum_dist = 0.0f;
+    float sum_W = 0;
 
     // Search the pose
     vector<int>::iterator iter = find(pose_number_.begin(), pose_number_.end(), frame_ps);
@@ -87,7 +87,7 @@ MultiviewBodyModel::match(const Mat &frame_desc, int frame_ps, const vector<floa
 
             switch (check_occlusion(frame_conf[k], *model_conf)) {
                 case VISIBLE:
-                    sum_dist += norm(frame_desc.row(k), pose_descriptors_[ps_num_idx].row(k), norm_type);
+                    sum_dist += norm(frame_descriptors.row(k), pose_descriptors_[ps_num_idx].row(k), norm_type);
                     sum_W++;
                     break;
                 case MODELOCCLUDED:
@@ -95,7 +95,7 @@ MultiviewBodyModel::match(const Mat &frame_desc, int frame_ps, const vector<floa
                         double weighted_dist = 0.0;
                         double overall_weights = 0.0;
 
-                        occlusion_norm(frame_desc.row(k), frame_ps, k, poses_map, ps2keypoints_map, kp_map, kp_weights,
+                        occlusion_norm(frame_descriptors.row(k), frame_ps, k, poses_map, ps2keypoints_map, kp_map, kp_weights,
                                        norm_type, weighted_dist, overall_weights);
 
                         sum_dist += weighted_dist;
@@ -119,14 +119,14 @@ MultiviewBodyModel::match(const Mat &frame_desc, int frame_ps, const vector<floa
             // Compute the distance only for valid keypoints and not occluded
             if (keypoints_found.row(k).at<uchar>(0) == 1 && frame_conf[k] == 1) {
                 float W = model_weights.row(k).at<float>(0);
-                sum_dist += W * cv::norm(frame_desc.row(k), model_descriptors.row(k), norm_type);
+                sum_dist += (W * norm(frame_descriptors.row(k), model_descriptors.row(k), norm_type));
                 sum_W += W;
             }
         }
     }
 
     if (sum_W != 0)
-        return static_cast<float>(sum_dist / sum_W);
+        return sum_dist / sum_W;
 
     return -1;
 }
@@ -195,8 +195,8 @@ void MultiviewBodyModel::occlusion_norm(const cv::Mat &frame_desc, int model_ps,
 void MultiviewBodyModel::create_descriptor_from_poses(int pose_not_found, const cv::Mat &model_poses_map,
                                                       const cv::Mat &model_ps2keypoints_map,
                                                       const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights,
-                                                      cv::Mat out_model_descriptors, cv::Mat out_descriptors_weights,
-                                                      cv::Mat keypoints_mask) {
+                                                      Mat &out_model_descriptors, Mat &out_descriptors_weights,
+                                                      Mat &keypoints_mask) {
 
     assert(pose_descriptors_.size() > 0);
 
@@ -219,7 +219,7 @@ void MultiviewBodyModel::create_descriptor_from_poses(int pose_not_found, const 
     int alternative_ps = model_poses_map.row(pose_not_found).at<int>(alternative_ps_idx);
 
     // Build the descriptor
-    while(k < num_keypoints && alternative_ps_idx < model_poses_map.cols && alternative_ps != -1) {
+    while(k < num_keypoints) {
         // Search the alternative pose inside the model
         vector<int>::iterator iter = find(pose_number_.begin(), pose_number_.end(), alternative_ps);
         if (iter != pose_number_.end()) {
@@ -232,30 +232,39 @@ void MultiviewBodyModel::create_descriptor_from_poses(int pose_not_found, const 
             int kp = model_kp_map.row(kp_row_idx).at<int>(k);
 
             // Checking if the keypoints has a valid match
-            if (kp != -1) {
-                if (pose_confidences_[pose_number_idx][kp] == 1) {
-                    // Keypoint visible, append the relative descriptor:
-                    // the k-th row of the output vector as the kp-th descriptor
-                    // of pose_number_[pose_number_idx]
-                    out_model_descriptors.row(k) = pose_descriptors_[pose_number_idx].row(kp);
-                    float kp_weight = model_kp_weights.row(kp_row_idx).at<float>(k);
-                    out_descriptors_weights.row(k).at<float>(0) = kp_weight;
-                    alternative_ps = model_poses_map.row(pose_not_found).at<int>(0);
-                    k++;
-                    keypoints_mask.row(k).at<uchar>(0) = 1;
-                }
+            if (kp != -1 && pose_confidences_[pose_number_idx][kp] == 1) {
+                // Valid visible match keypoint: append the relative descriptor:
+                // the k-th row of the output vector as the kp-th descriptor
+                // of pose_number_[pose_number_idx]
+                pose_descriptors_[pose_number_idx].row(kp).copyTo(out_model_descriptors.row(k));
+
+                float kp_weight = model_kp_weights.row(kp_row_idx).at<float>(k);
+                out_descriptors_weights.row(k).at<float>(0) = kp_weight;
+                alternative_ps = model_poses_map.row(pose_not_found).at<int>(0);
+                keypoints_mask.row(k).at<uchar>(0) = 1;
+                k++;
+
             }
             else {
                 // If there isn't a valid match keypoint, search another one in other alternative poses
                 alternative_ps = model_poses_map.row(pose_not_found).at<int>(++alternative_ps_idx);
-                if (alternative_ps == -1) {
+                if (alternative_ps == -1 || alternative_ps_idx == model_poses_map.cols) {
                     // There are no more alternative poses to choose:
                     // not consider this keypoint for the match and go to the next keypoint
-                    alternative_ps = 0;
+                    alternative_ps_idx = 0;
+                    alternative_ps = model_poses_map.row(pose_not_found).at<int>(0);
                     keypoints_mask.row(k).at<uchar>(0) = 0;
                     k++;
                 }
             }
+        }
+        else {
+            // There are no more alternative poses to choose:
+            // not consider this keypoint for the match and go to the next keypoint
+            alternative_ps_idx = 0;
+            alternative_ps = model_poses_map.row(pose_not_found).at<int>(0);
+            keypoints_mask.row(k).at<uchar>(0) = 0;
+            k++;
         }
     } // end-while
 }
@@ -269,6 +278,15 @@ OcclusionType MultiviewBodyModel::check_occlusion(float frame_conf, float model_
         return  FRAMEOCCLUDED;
     return VISIBLE;
 }
+
+float MultiviewBodyModel::match(const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf,
+                                bool occlusion_search, Configuration &conf, Timing &timing) {
+    return match(frame_descriptors, frame_ps, frame_conf, conf.norm_type, true,
+                 conf.poses_map, conf.kp_map, conf.kp_weights, conf.poses2kp_map,
+                 timing);
+}
+
+
 
 
 
@@ -348,29 +366,33 @@ void Configuration::show() {
             cout << endl;
     }
     cout << "]" << endl;
+
     cout << "VIEWS NAMES: ";
     cout << "[" << views_names[0];
     for (int j = 1; j < views_names.size(); ++j) {
         cout << ", " << views_names[j];
     }
     cout << "]" << endl;
+
     cout << "NUMBER OF IMAGES: ";
     cout << "[" << (int)num_images.at<uchar>(0, 0);
     for (int i = 1; i < num_images.rows; i++) {
         cout << ", " << (int)num_images.at<uchar>(i, 0);
     }
     cout << "]" << endl << endl;
-    cout << "DESCRIPTOR TYPE: " <<
-            (descriptor_extractor_type.size() > 1 ? "all" : descriptor_extractor_type[0]) << endl;
+
+    cout << "POSES NUMBERS: ";
+    cout << "[" << poses[0];
+    for (int k = 1; k < poses.size(); ++k) {
+        cout << ", " << poses[k];
+    }
+    cout << "]" << endl;
+
+    cout << "DESCRIPTOR TYPE: " << descriptor_type_str <<  endl;
     cout << "NORM_TYPE: " << (norm_type == cv::NORM_L2 ? "L2" : "Hamming") << endl;
 
-    cout << "KEYPOINT SIZE: ";
-    if (keypoint_size.size() > 1)
-        cout << "predefined" << endl;
-    else
-        cout << keypoint_size[0] << endl;
+    cout << "KEYPOINT SIZE: " << keypoint_size << endl;
     cout << "OCCLUSION SEARCH: " << (occlusion_search ? "T" : "F") << endl;
-    cout << "MAX POSES: " << max_poses << endl;
     cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
 }
 
@@ -399,7 +421,7 @@ void parse_args(int argc, char **argv, Configuration &out_conf) {
     out_conf.conf_file_path = "../conf.xml";
     out_conf.res_file_path = "../res/";
 
-
+    // Parse args
     for (int i = 1; i < argc; ++i) {
         if (i != argc) {
             if (strcmp(argv[i], "-c") == 0) {
@@ -413,92 +435,145 @@ void parse_args(int argc, char **argv, Configuration &out_conf) {
                 ss.str("");
             }
             else if (strcmp(argv[i], "-d") == 0) {
-                if (out_conf.keypoint_size.size() > 0)
-                    out_conf.keypoint_size.clear();
-
-                if (strcmp(argv[i+1], "L2") == 0) {
-                    out_conf.descriptor_extractor_type.push_back("SURF");
-                    out_conf.keypoint_size.push_back(11);
-                    out_conf.descriptor_extractor_type.push_back("SIFT");
-                    out_conf.keypoint_size.push_back(3);
-
-                    out_conf.norm_type = cv::NORM_L2;
+                ss << argv[i+1];
+                out_conf.descriptor_type = char2descriptor_type(argv[i+1]);
+                switch (out_conf.descriptor_type) {
+                    case SIFT:
+                        out_conf.keypoint_size = 3;
+                        break;
+                    case SURF:
+                        out_conf.keypoint_size = 11;
+                        break;
+                    case BRIEF:
+                        out_conf.keypoint_size = 11;
+                        break;
+                    case ORB:
+                        out_conf.keypoint_size = 9;
+                        break;
+                    case FREAK:
+                        out_conf.keypoint_size = 9;
+                        break;
+                    default:
+                        cerr << "Invalid descriptor extractor type, "
+                                "choose one from SIFT, SURF, ORB, FREAK, BRIEF." << endl;
+                        exit(-1);
                 }
-                else if (strcmp(argv[i+1], "H") == 0) {
-                    out_conf.descriptor_extractor_type.push_back("BRIEF");
-                    out_conf.keypoint_size.push_back(11);
-                    out_conf.descriptor_extractor_type.push_back("ORB");
-                    out_conf.keypoint_size.push_back(9);
-                    out_conf.descriptor_extractor_type.push_back("FREAK");
-                    out_conf.keypoint_size.push_back(9);
-
-                    out_conf.norm_type = cv::NORM_HAMMING;
-                }
-                else {
-                    ss << argv[i+1];
-                    out_conf.descriptor_extractor_type.push_back(ss.str());
-                    out_conf.norm_type = get_norm_type(argv[++i]);
-                    ss.str("");
-                }
+                out_conf.norm_type = get_norm_type(out_conf.descriptor_type);
+                out_conf.descriptor_type_str = ss.str();
+                ss.str("");
             }
             else if (strcmp(argv[i], "-k") == 0) {
                 int value = atoi(argv[++i]);
-
-                int size = out_conf.descriptor_extractor_type.size();
-                if (size > 0) {
-                    out_conf.keypoint_size.clear();
-                    // Put the same keypoint size for all the descriptors
-                    for (int j = 0; j < size; ++j) {
-                        out_conf.keypoint_size.push_back(value);
-                    }
-                }
-                else {
-                    // Put only one keypoint size
-                    out_conf.keypoint_size.push_back(value);
-                }
-            }
-            else if (strcmp(argv[i], "-ps") == 0) {
-                out_conf.max_poses = atoi(argv[++i]);
+                out_conf.keypoint_size = value;
             }
         }
     }
+}
 
-    cv::FileStorage fs(out_conf.conf_file_path, cv::FileStorage::READ);
-    fs["MainPath"] >> out_conf.main_path;
+void read_config_file(Configuration &conf) {
+    cv::FileStorage fs(conf.conf_file_path, cv::FileStorage::READ);
+    fs["MainPath"] >> conf.main_path;
 
     cv::FileNode pn = fs["PersonNames"];
     check_sequence(pn);
-    for (cv::FileNodeIterator it = pn.begin(); it != pn.end(); ++it)
-        out_conf.persons_names.push_back((string)*it);
+    for (FileNodeIterator it = pn.begin(); it != pn.end(); ++it)
+        conf.persons_names.push_back((string)*it);
 
     cv::FileNode wn = fs["ViewNames"];
     check_sequence(wn);
-    for (cv::FileNodeIterator it = wn.begin(); it != wn.end(); ++it)
-        out_conf.views_names.push_back((string)*it);
+    for (FileNodeIterator it = wn.begin(); it != wn.end(); ++it)
+        conf.views_names.push_back((string)*it);
 
-    fs["KeypointsNumber"] >> out_conf.keypoints_number;
+    cv::FileNode psn = fs["Poses"];
+    check_sequence(psn);
+    for (FileNodeIterator it = psn.begin(); it != psn.end(); ++it)
+        conf.poses.push_back((int)*it);
 
-    fs["NumImages"] >> out_conf.num_images;
+    fs["KeypointsNumber"] >> conf.keypoints_number;
 
-    if (out_conf.persons_names.size() != out_conf.num_images.rows) {
+    fs["NumImages"] >> conf.num_images;
+
+    if (conf.persons_names.size() != conf.num_images.rows) {
         cerr << "#persons != #num_images, check the configuration file!" << endl;
         exit(-1);
     }
 
-    fs["OcclusionSearch"] >> out_conf.occlusion_search;
+    fs["PosesMap"] >> conf.poses_map;
+    if (!conf.poses_map.data) {
+        int poses_map_data[12] = {2, 3, 4,
+                                  1, 3, 4,
+                                  1, 2, -1,
+                                  1, 2, -1};
+
+        conf.poses_map = Mat(4, 3, CV_32S, poses_map_data);
+    }
+
+    fs["Poses2KeypointsMap"] >> conf.poses2kp_map;
+    if (!conf.poses2kp_map.data) {
+        int poses2kp_data[12] = {0, 1, 2,
+                                      0, 3, 4,
+                                      1, 3, -1,
+                                      2, 4, -1};
+        conf.poses2kp_map = Mat(4, 3, CV_32S, poses2kp_data);
+    }
+
+    fs["KeypointsMap"] >> conf.kp_map;
+    if (!conf.kp_map.data) {
+        int kp_map_data[75] = {-1, -1, 5, -1, -1, 2, -1, -1, 8, 12, 13, -1, 9, 10, -1,
+                               0, -1, 2, 3, 4, -1, -1, -1, 8, 9, 10, 11, -1, -1, -1,
+                               0, -1, -1, -1, -1, 5, 6, 7, 8, -1, -1, -1, 12, 13, 14,
+                               -1, -1, 2, 3, 4, -1, -1, -1, 8, 9, 10, 11, -1, -1, -1,
+                               -1, -1, -1, -1, -1, 5, 6, 7, 8, -1, -1, -1, 12, 13, 14};
+        conf.kp_map = Mat(5, 15, CV_32S, kp_map_data);
+
+    }
+    fs["KeypointsWeights"] >> conf.kp_weights;
+    if (!conf.kp_weights.data) {
+        float w_data[75] = {0, 0, 0.5, 0, 0, 0.5, 0, 0, 1, 0.5, 0.3, 0, 0.5, 0.3, 0,
+                            0.3, 0, 0.5, 0.5, 0.5, 0, 0, 0, 0.5, 0.5, 0.7, 0.7, 0, 0, 0,
+                            0.3, 0, 0, 0, 0, 0.5, 0.5, 0.5, 0.5, 0, 0, 0, 0.5, 0.7, 0.7,
+                            0, 0, 0.5, 0.5, 0.3, 0, 0, 0, 0.5, 0.5, 0.5, 0.3, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0.5, 0.5, 0.3, 0.5, 0, 0, 0, 0.5, 0.5, 0.3};
+
+        conf.kp_weights = Mat(5, 15, CV_32F, w_data);
+    }
+
+    fs["OcclusionSearch"] >> conf.occlusion_search;
     fs.release();
 }
 
-int get_norm_type(const char *descriptor_name) {
-    bool l2_cond = (strcmp(descriptor_name, "SIFT") == 0 || strcmp(descriptor_name, "SURF") == 0);
-    bool h_cond = (strcmp(descriptor_name, "BRIEF") == 0 || strcmp(descriptor_name, "BRISK") == 0 ||
-                   strcmp(descriptor_name, "ORB") == 0 || strcmp(descriptor_name, "FREAK") == 0);
-    if (l2_cond)
-        return cv::NORM_L2;
-    else if (h_cond)
-        return cv::NORM_HAMMING;
+DescriptorType char2descriptor_type(const char *str) {
+    if (strcmp(str, "SIFT") == 0)
+        return SIFT;
+    else if (strcmp(str, "SIFT") == 0)
+        return SIFT;
+    else if (strcmp(str, "SIFT") == 0)
+        return SIFT;
+    else if (strcmp(str, "SIFT") == 0)
+        return SIFT;
+    else if (strcmp(str, "SIFT") == 0)
+        return SIFT;
 
-    return -1;
+    return INVALID;
+}
+
+int get_norm_type(DescriptorType descriptor_type) {
+
+    int norm_type = -1;
+    switch (descriptor_type) {
+        case SIFT:
+        case SURF:
+            norm_type = cv::NORM_L2;
+            break;
+        case ORB:
+        case FREAK:
+        case BRIEF:
+            norm_type = cv::NORM_HAMMING;
+            break;
+        default:;
+    }
+
+    return norm_type;
 }
 
 void check_sequence(cv::FileNode fn) {
@@ -508,7 +583,8 @@ void check_sequence(cv::FileNode fn) {
     }
 }
 
-void load_person_imgs_paths(const Configuration &conf, vector<vector<string> > &out_imgs_paths, vector<vector<string> > &out_skels_paths) {
+int load_person_imgs_paths(const Configuration &conf, vector<vector<string> > &out_imgs_paths,
+                           vector<vector<string> > &out_skels_paths) {
 
     assert(conf.persons_names.size() == conf.num_images.rows);
 
@@ -516,6 +592,8 @@ void load_person_imgs_paths(const Configuration &conf, vector<vector<string> > &
 
     vector<string> imgs_paths;
     vector<string> skels_paths;
+
+    int tot_imgs = 0;
     for (int i = 0; i < conf.persons_names.size(); ++i) {
 
         for (int j = 0; j < conf.views_names.size(); ++j) {
@@ -543,9 +621,13 @@ void load_person_imgs_paths(const Configuration &conf, vector<vector<string> > &
         out_imgs_paths.push_back(imgs_paths);
         out_skels_paths.push_back(skels_paths);
 
+        tot_imgs += imgs_paths.size();
+
         imgs_paths.clear();
         skels_paths.clear();
     }
+
+    return tot_imgs;
 }
 
 
@@ -562,12 +644,9 @@ void load_masks(const vector<vector<T> > &skels_paths,
 template void load_masks<string>(const vector<vector<string> > &skels_paths,
                               vector<Mat> &masks);
 
-template void load_masks<int>(const vector<vector<int> > &indices,
-                                 vector<Mat> &masks);
-
-int load_models_set(std::vector<int> &poses, std::vector<std::vector<cv::string> > img_paths,
-                    std::vector<std::vector<cv::string> > skels_paths, int num_skel_keypoints, int max_size,
-                    int min_keypoints_visibles, std::vector<std::vector<int> > &out_model_set) {
+int load_models_set(vector<int> &poses, const std::vector<std::vector<cv::string> > img_paths,
+                    const std::vector<std::vector<cv::string> > skels_paths, int max_size, int min_keypoints_visibles,
+                    std::vector<std::vector<int> > &out_model_set) {
 
     assert(img_paths.size() == skels_paths.size());
     assert(poses.size() > 0);
@@ -594,12 +673,12 @@ int load_models_set(std::vector<int> &poses, std::vector<std::vector<cv::string>
         // Fill the indices vector
         int j = 0;
         while (indices.size() < max_size_good) {
-            string *skel_path = &skels_paths[i][j];
+            string skel_path = skels_paths[i][j];
 
             char *mask_elem = &masks[i].row(0).at<char>(j);
 
-            if (get_pose_side(*skel_path) == poses[pose_idx] && *mask_elem != -1) {
-                if (get_total_keyponts_visible(*skel_path, 15) > min_keypoints_visibles) {
+            if (get_pose_side(skel_path) == poses[pose_idx] && *mask_elem != -1) {
+                if (get_total_keyponts_visible(skel_path, 15) > min_keypoints_visibles) {
                     indices.push_back(j);
                     pose_idx = ++pose_idx % static_cast<int>(poses.size());
                 }
@@ -745,46 +824,7 @@ void compute_descriptors(const std::string &img_path, const std::vector<cv::KeyP
     }
 }
 
-// Example:
-// # img   |   pose
-//   1     |     1
-//   2     |     1
-//   3     |     1
-//   4     |     2
-//   5     |     3
-//   6     |     3
-//   7     |     3
-//   8     |     3
-//   9     |     4
-//   10    |     4
-//
-// produce [1 3 2 1 3 4 4 2]
-void get_poses_map(vector<vector<string> > train_paths, vector<vector<int> > &out_map) {
-    for (int i = 0; i < train_paths.size(); ++i) {
-        vector<int> vec;
-        int prev = get_pose_side(train_paths[i][0]);
-        vec.push_back(prev);
 
-        int counter = 1;
-        for (int j = 1; j < train_paths[i].size(); ++j) {
-
-            int cur = get_pose_side(train_paths[i][j]);
-            if (cur == prev) {
-                counter++;
-            }
-            else {
-                // Change the current pose side and save the counter
-                // the counter follow the pose side.
-                vec.push_back(counter);
-                vec.push_back(cur);
-                prev = cur;
-                counter = 1;
-            }
-        }
-        vec.push_back(counter);
-        out_map.push_back(vec);
-    }
-}
 
 void multiviewbodymodel::Timing::write(string name) {
     cv::FileStorage fs(name + ".xml", cv::FileStorage::WRITE);
@@ -837,6 +877,27 @@ int factorial(int n) {
     if (n == 0)
         return 1;
     return n * factorial(n - 1);
+}
+
+void empty_models(int size, std::vector<MultiviewBodyModel> &models) {
+    for (int i = 0; i < size; ++i) {
+        MultiviewBodyModel model;
+        models.push_back(model);
+    }
+}
+
+void init_models(Configuration conf, int rounds, const std::vector<std::vector<cv::string> > imgs_paths,
+                 const std::vector<std::vector<cv::string> > skels_paths, const std::vector<std::vector<int> > &models_set,
+                 std::vector<MultiviewBodyModel> &models, Timing &timing) {
+    for (int i = 0; i < models_set.size(); ++i) {
+        for (int pose_idx = 0; pose_idx < conf.poses.size(); ++pose_idx) {
+            int frame_idx = pose_idx * rounds;
+            models[i].read_pose_compute_descriptors(imgs_paths[i][models_set[i][frame_idx]],
+                                                    skels_paths[i][models_set[i][frame_idx]],
+                                                    conf.keypoint_size, conf.descriptor_type_str, timing);
+
+        }
+    }
 }
 
 } // end namespace
