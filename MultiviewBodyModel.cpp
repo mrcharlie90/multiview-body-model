@@ -22,6 +22,8 @@ using cv::Range;
 using cv::KeyPoint;
 using cv::norm;
 using cv::FileNodeIterator;
+using cv::getTickCount;
+using cv::getTickFrequency;
 
 // ------------------------------------------------------------------------- //
 //                           Methods definitions                             //
@@ -38,7 +40,11 @@ void MultiviewBodyModel::read_pose_compute_descriptors(string img_path, string s
 
     assert(ps > 0);
 
+    double t0_extraction = timing.enabled ? getTickCount() : 0;
     compute_descriptors(img_path, keypoints, descriptor_extractor_type, descriptors);
+    timing.enabled ? timing.extraction += (getTickCount() - t0_extraction) / getTickFrequency() : 0;
+    timing.enabled ? timing.n_extraction++ : timing.n_extraction = 0;
+
 
     // Search for a pose already inserted
     vector<int>::iterator iter = find(pose_number_.begin(), pose_number_.end(), ps);
@@ -60,14 +66,17 @@ void MultiviewBodyModel::read_pose_compute_descriptors(string img_path, string s
     }
 }
 
-float
-MultiviewBodyModel::match(const Mat &frame_descriptors, int frame_ps, const vector<float> &frame_conf, int norm_type,
-                          bool occlusion_search, const Mat &poses_map, const Mat &kp_map, const Mat &kp_weights,
-                          const Mat &ps2keypoints_map, Timing &timing) {
+float MultiviewBodyModel::match(const Mat &frame_descriptors, int frame_ps, const vector<float> &frame_conf,
+                                int norm_type, bool occlusion_search, const Mat &poses_map, const Mat &kp_map,
+                                const Mat &kp_weights, const Mat &ps2keypoints_map, Timing &timing) {
     assert(pose_descriptors_.size() > 0);
     assert(kp_map.cols == pose_descriptors_[0].rows && kp_weights.cols == pose_descriptors_[0].rows);
-    assert(poses_map.rows >= pose_number_.size() && ps2keypoints_map.rows >= pose_number_.size() && ps2keypoints_map.rows == poses_map.rows);
+    assert(poses_map.rows >= pose_number_.size() &&
+           ps2keypoints_map.rows >= pose_number_.size() &&
+           ps2keypoints_map.rows == poses_map.rows);
     assert(kp_map.rows > 0 && kp_map.rows == kp_weights.rows);
+
+    double t0_one_match = timing.enabled ? (double)getTickCount() : 0;
 
     // Output distance
     float sum_dist = 0.0f;
@@ -113,7 +122,7 @@ MultiviewBodyModel::match(const Mat &frame_descriptors, int frame_ps, const vect
         Mat model_descriptors;
         Mat model_weights;
         create_descriptor_from_poses(frame_ps, poses_map, ps2keypoints_map, kp_map, kp_weights, model_descriptors,
-                                     model_weights, keypoints_found);
+                                     model_weights, keypoints_found, timing);
 
         for (int k = 0; k < model_descriptors.rows; ++k) {
             // Compute the distance only for valid keypoints and not occluded
@@ -124,6 +133,9 @@ MultiviewBodyModel::match(const Mat &frame_descriptors, int frame_ps, const vect
             }
         }
     }
+
+    timing.enabled ? timing.one_match += ((double)getTickCount() - t0_one_match) / getTickFrequency() : 0;
+    timing.enabled ? timing.n_one_match++ : timing.n_one_match = 0;
 
     if (sum_W != 0)
         return sum_dist / sum_W;
@@ -196,9 +208,11 @@ void MultiviewBodyModel::create_descriptor_from_poses(int pose_not_found, const 
                                                       const cv::Mat &model_ps2keypoints_map,
                                                       const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights,
                                                       Mat &out_model_descriptors, Mat &out_descriptors_weights,
-                                                      Mat &keypoints_mask) {
+                                                      Mat &keypoints_mask, Timing &timing) {
 
     assert(pose_descriptors_.size() > 0);
+
+    double t0_descr_creation = timing.enabled ? (double)getTickCount() : 0;
 
     // Coherent with matrix indices
     pose_not_found--;
@@ -267,6 +281,9 @@ void MultiviewBodyModel::create_descriptor_from_poses(int pose_not_found, const 
             k++;
         }
     } // end-while
+
+    timing.enabled ? timing.descr_creation += ((double)getTickCount() - t0_descr_creation) / getTickFrequency() : 0;
+    timing.enabled ? timing.n_descr_creation++ : timing.n_descr_creation = 0;
 }
 
 OcclusionType MultiviewBodyModel::check_occlusion(float frame_conf, float model_conf) {
@@ -279,8 +296,8 @@ OcclusionType MultiviewBodyModel::check_occlusion(float frame_conf, float model_
     return VISIBLE;
 }
 
-float MultiviewBodyModel::match(const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf,
-                                bool occlusion_search, Configuration &conf, Timing &timing) {
+float MultiviewBodyModel::match(Configuration &conf, const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf,
+                                bool occlusion_search, Timing &timing) {
     return match(frame_descriptors, frame_ps, frame_conf, conf.norm_type, true,
                  conf.poses_map, conf.kp_map, conf.kp_weights, conf.poses2kp_map,
                  timing);
@@ -353,19 +370,51 @@ void read_skel_file(const string &skel_path, int keypoint_size,
     ss >> out_pose_side;
 }
 
+void multiviewbodymodel::Timing::write(string path, string name) {
+    assert(enabled);
+
+    std::ofstream file(path + name + ".dat", std::ofstream::app);
+    if (file.is_open()) {
+        if (file.tellp() == 0)
+            file << "name   one_match   extraction    models_loading   descr_creation" << endl;
+
+        file << name << " "
+             << one_match / n_one_match << " "
+             << extraction  / n_extraction << " "
+             << models_loading / n_models_loading << " "
+             << descr_creation / n_descr_creation << endl;
+    }
+    else
+        cerr << endl << "Timing::write(): Cannot open the file!" << endl;
+    file.close();
+}
+
+void multiviewbodymodel::Timing::show() {
+    cout << endl << "----------------- PERFORMANCE -----------------" << endl;
+    cout << "NAME: " << name << endl;
+    cout << "ONE_MATCH: " << one_match / n_one_match << " s" << endl;
+    cout << "EXTRACTION: " << extraction  / n_extraction << " s" << endl;
+    cout << "MODELS_LOADING: " << models_loading / n_models_loading << " s" << endl;
+    cout << "DESCRIPTOR_CONSTRUCTION: " << descr_creation / n_descr_creation << " s" << endl;
+    cout << "-----------------------------------------------" << " s" << endl;
+}
 
 void Configuration::show() {
-    cout << "---------------- CONFIGURATION --------------------------------" << endl << endl;
+    cout << endl <<  "---------------- CONFIGURATION --------------------------------" << endl << endl;
     cout << "MAIN PATH: " << main_path << endl;
-    cout << "RESULTS PATH: " << res_file_path << endl;
+    cout << "RESULTS PATH: " << res_file_path << endl << endl;
+
     cout << "PERSONS NAMES: " << endl;
-    cout << "[" << persons_names[0];
-    for (int k = 1; k < persons_names.size(); ++k) {
-        cout << ", " << persons_names[k];
-        if (k % 2 == 0 && k < persons_names.size() - 1)
+    cout << "[";
+    for (int k = 0; k < persons_names.size(); ++k) {
+        if (k != persons_names.size() - 1)
+            cout << persons_names[k] << ", ";
+        else
+            cout << persons_names[k];
+        if (k != 0 && k % 3 == 0 && k < persons_names.size() - 1)
             cout << endl;
     }
-    cout << "]" << endl;
+    cout << "]" << endl << endl;
 
     cout << "VIEWS NAMES: ";
     cout << "[" << views_names[0];
@@ -381,6 +430,10 @@ void Configuration::show() {
     }
     cout << "]" << endl << endl;
 
+    cout << "MODEL SET SIZE: " << model_set_size << endl;
+    cout << "NUMBER OF KEYPOINTS: " << keypoints_number << endl;
+    cout << "OCCLUSION SEARCH: " << (occlusion_search ? "T" : "F") << endl << endl;
+
     cout << "POSES NUMBERS: ";
     cout << "[" << poses[0];
     for (int k = 1; k < poses.size(); ++k) {
@@ -390,17 +443,14 @@ void Configuration::show() {
 
     cout << "DESCRIPTOR TYPE: " << descriptor_type_str <<  endl;
     cout << "NORM_TYPE: " << (norm_type == cv::NORM_L2 ? "L2" : "Hamming") << endl;
-
     cout << "KEYPOINT SIZE: " << keypoint_size << endl;
-    cout << "OCCLUSION SEARCH: " << (occlusion_search ? "T" : "F") << endl;
     cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
 }
 
 void show_help() {
     cout << "USAGE: multiviewbodymodel -c <configfile> -d <descriptortype> -k <keypointsize> -n <numberofposes>" << endl;
     cout << "EXAMPLE: $/multiviewbodymodel -c ../conf.xml -r ../res/ -d L2 -ps 3" << endl;
-    cout << "<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>"
-         << endl;
+    cout << "<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>" << endl;
     cout << "-c         path to the configuration file, it must be a valid .xml file." << endl;
     cout << "-r         path to the directory where the resutls are stored, must be already created." << endl;
     cout << "-d         descriptor to use: choose between SIFT, SURF, ORB, FREAK, BRIEF." << endl <<
@@ -410,7 +460,9 @@ void show_help() {
             "             L2 for descriptor with Euclidean distance (SIFT, SURF)" << endl <<
             "           then you don't need to specify the keypoint size." << endl;
     cout << "-k         set the keypoint size" << endl;
-    cout << "-ps        set the number of pose sides" << endl;
+    cout << "-ms        set the model set size: number of images that will be  used to  build the " << endl
+         << "           models." << endl;
+    cout << "<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>" << endl;
     exit(0);
 }
 
@@ -420,6 +472,7 @@ void parse_args(int argc, char **argv, Configuration &out_conf) {
     // Default values
     out_conf.conf_file_path = "../conf.xml";
     out_conf.res_file_path = "../res/";
+
 
     // Parse args
     for (int i = 1; i < argc; ++i) {
@@ -465,6 +518,10 @@ void parse_args(int argc, char **argv, Configuration &out_conf) {
             else if (strcmp(argv[i], "-k") == 0) {
                 int value = atoi(argv[++i]);
                 out_conf.keypoint_size = value;
+            }
+            else if (strcmp(argv[i], "-ms") == 0) {
+                int value = atoi(argv[++i]);
+                out_conf.model_set_size = value;
             }
         }
     }
@@ -629,7 +686,6 @@ int load_person_imgs_paths(const Configuration &conf, vector<vector<string> > &o
 
     return tot_imgs;
 }
-
 
 template <typename T>
 void load_masks(const vector<vector<T> > &skels_paths,
@@ -823,37 +879,6 @@ void compute_descriptors(const std::string &img_path, const std::vector<cv::KeyP
         out_descriptors = tmp_descriptors;
     }
 }
-
-
-
-void multiviewbodymodel::Timing::write(string name) {
-    cv::FileStorage fs(name + ".xml", cv::FileStorage::WRITE);
-    if(fs.isOpened()) {
-//        fs << "avgLoadingTrainingSet" << (t_tot_load_training_set / n_tot_load_training_set);
-//        fs << "avgExctraction" << (t_tot_extraction / n_tot_extraction);
-//        fs << "avgMatch" << (t_matching / n_matching);
-//        fs << "avgRound" << (t_rounds / n_rounds);
-//        fs << "avgOneModelLoading" << (t_tot_model_loading / n_tot_model_loading);
-//        fs << "avgSkelLoading" << (t_tot_skel_loading / n_tot_skel_loading);
-//        fs << "totExec" << t_tot_exec;
-        fs.release();
-    }
-    else
-        cerr << "Timing::write(): cannot open the file!" << endl;
-
-}
-
-void multiviewbodymodel::Timing::show() {
-    cout << "----------------- PERFORMANCE -----------------" << endl;
-//    cout << "avgLoadingTrainingSet " << (t_tot_load_training_set / n_rounds);
-//    cout << "avgOneRound " << (t_rounds / n_rounds);
-//    cout << "avgDescriptorsComputation " << (t_tot_extraction / n_tot_extraction);
-//    cout << "avgOneModelLoading " << (t_tot_model_loading / n_tot_model_loading);
-//    cout << "avgSkelLoading " << (t_tot_skel_loading / n_tot_skel_loading);
-//    cout << "totMatching " << t_tot_exec;
-    cout << "-----------------------------------------------" << endl;
-}
-
 template<typename T>
 int get_rank_index(priority_queue<PQRank<T>, vector<PQRank<T> >, PQRank<T> > pq,
                    int test_class) {
@@ -873,12 +898,6 @@ template int
 get_rank_index<float>(priority_queue<PQRank<float>, vector<PQRank<float> >, PQRank<float> > pq,
                       int test_class);
 
-int factorial(int n) {
-    if (n == 0)
-        return 1;
-    return n * factorial(n - 1);
-}
-
 void empty_models(int size, std::vector<MultiviewBodyModel> &models) {
     for (int i = 0; i < size; ++i) {
         MultiviewBodyModel model;
@@ -889,6 +908,8 @@ void empty_models(int size, std::vector<MultiviewBodyModel> &models) {
 void init_models(Configuration conf, int rounds, const std::vector<std::vector<cv::string> > imgs_paths,
                  const std::vector<std::vector<cv::string> > skels_paths, const std::vector<std::vector<int> > &models_set,
                  std::vector<MultiviewBodyModel> &models, Timing &timing) {
+
+    double t0_models_loading = timing.enabled ? (double)getTickCount() : 0;
     for (int i = 0; i < models_set.size(); ++i) {
         for (int pose_idx = 0; pose_idx < conf.poses.size(); ++pose_idx) {
             int frame_idx = pose_idx * rounds;
@@ -898,6 +919,55 @@ void init_models(Configuration conf, int rounds, const std::vector<std::vector<c
 
         }
     }
+    timing.enabled ? timing.models_loading += ((double)getTickCount() - t0_models_loading) / getTickFrequency() : 0;
+    timing.enabled ? timing.n_models_loading++ : timing.n_models_loading = 0;
+}
+
+float area_under_curve(cv::Mat CMC) {
+    assert(CMC.rows == 1);
+
+    float nAUC = 0;
+    for (int c  = 0; c < CMC.cols - 1; ++c) {
+        nAUC += (CMC.at<float>(0, c) + CMC.at<float>(0, c + 1));
+    }
+    nAUC /= 2;
+    nAUC /= CMC.cols; // normalize
+
+    return nAUC;
+}
+
+string get_res_filename(Configuration conf) {
+    stringstream ss;
+    ss << "_O" << conf.occlusion_search
+       << "_K" << conf.keypoint_size
+       << "_MS" << conf.model_set_size
+       << "_P" << conf.poses.size();
+
+    return ss.str();
+}
+
+void print_cmc_nauc(cv::string path, string settings, cv::string desc_type, Mat CMC, float nAUC) {
+    std::ofstream file(path + "CMC_" + desc_type + settings + ".dat", std::ofstream::out);
+    if (file.is_open()) {
+        file << "rank   recrate" << endl;
+
+        for (int i = 0; i < CMC.cols; i++) {
+            file << i+1 << " " << CMC.at<float>(0, i) << endl;
+        }
+    }
+    else
+        cerr << endl << "print_cmc_nauc(): Cannot open the file!" << endl;
+    file.close();
+
+    file.open(path + "nAU" + settings + ".dat", std::ofstream::app);
+    if (file.is_open()) {
+        if (file.tellp() == 0)
+            file << "name   nauc" << endl;
+        file << desc_type << " " << nAUC << endl;
+    }
+    else
+        cerr << endl << "print_cmc_nauc(): Cannot open the file!" << endl;
+    file.close();
 }
 
 } // end namespace

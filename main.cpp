@@ -3,37 +3,35 @@
 //          IASLab License
 //
 // Main used for testing the MultiviewMBodyModel class.
-// First of all it loads the parameters settings.
-//
-// Then it test a single or a set of descriptors with the models created.
-// The test set is chosen from a random set of images and the overall dataset
-// is used to load models.
-//
-// When the models are loaded all the frames in the test set are matched,
-// compunting the CMC curve and the relative nAUC.
-//
-// Then the results are stored in files contained in the result directory
-// specified by the configuration file
-//
-// Methods to test the replace function and for seeing the memory usage are implemented.
+// - loads the parameters settings.
+// - creates a model set of images to use for models building
+// - for each image in the dataset
+//       + match the image with the current models
+//       + computes the rank
+//       + computes the rates
+// - stores performance results in terms of CMC and nAUC
+// - stores execution times in files
 //
 
 #include "MultiviewBodyModel.h"
 
 using namespace multiviewbodymodel;
+using namespace cv;
 using std::vector;
 using std::cout;
 using std::cerr;
 using std::endl;
 using std::priority_queue;
-using namespace cv;
-using multiviewbodymodel::PQRank;
-
 
 int main(int argc, char** argv)
 {
-    Configuration conf;
 
+    double t0 = (double)cv::getTickCount();
+    int c = 1 + 1;
+    cout << ((double)cv::getTickCount() - t0) / getTickFrequency() << endl;
+
+    // Reading command line and parameters setting
+    Configuration conf;
     if (argc < 6) {
         show_help();
     }
@@ -48,52 +46,67 @@ int main(int argc, char** argv)
         conf.show();
     }
 
-    // Load the training set
+    // Loading paths from the configuration parameters and
+    // computing the total number of images in the dataset
     vector<vector<string> > imgs_paths;
     vector<vector<string> > skels_paths;
-
     int tot_imgs = load_person_imgs_paths(conf, imgs_paths, skels_paths);
 
-    const int k_model_set_size = 13;
-
+    // Model set loading: model_set_size defines the number of images that will
+    // be used for loading one person model, models_per_person is real number of images
+    // used (an multiple of the # of poses)
     vector<vector<int> > models_set;
     int models_per_person = load_models_set(conf.poses, imgs_paths, skels_paths,
-                                            k_model_set_size, 13, models_set);
+                                            conf.model_set_size, 13, models_set);
+
+    // Used for storing performance
     Timing timing;
+    timing.enable(conf.descriptor_type_str);
 
+    // Cumulative Matching Characteristic curve:
+    // contains the average person re-identification rate
+    Mat CMC;
+    CMC = Mat::zeros(1, static_cast<int>(models_set.size()), CV_32F);
+
+    // Create empty MultiviewBodyModel object to store information
+    // contained in the model set
     vector<MultiviewBodyModel> models;
-    empty_models(models_set.size(), models);
+    empty_models(static_cast<int>(models_set.size()), models);
 
+    // Models loading: the # of poses chosen from the settings are loaded
+    // in each model for each round
     int rounds = 1;
     while (rounds <= models_per_person) {
         printf("------------- %s Models loaded, rounds: %d -------------\n",
                conf.descriptor_type_str.c_str(), rounds);
-        init_models(conf, rounds, imgs_paths, skels_paths, models_set, models, timing);
 
+        // Creates the models for each person defined in the configuration settings
+        init_models(conf, rounds, imgs_paths, skels_paths, models_set, models, timing);
 
         // Rates of the current test image
         Mat rates;
-        rates = Mat::zeros(1, static_cast<int>(conf.persons_names.size()), CV_32F);
+        rates = Mat::zeros(1, static_cast<int>(models_set.size()), CV_32F);
 
         Mat W;
-        W = Mat::ones(4, 15, CV_8S);
+        W = Mat::ones(4, conf.keypoints_number, CV_8S);
 
         // foreach image in the data set do
         for (int i = 0; i < skels_paths.size(); ++i) {
             for (int j = 0; j < skels_paths[i].size(); ++j) {
-                Mat descriptors;
-                vector<KeyPoint> keypoints;
-                vector<float> confidences;
-                int ps;
+                Mat frame_descriptors;
+                vector<KeyPoint> frame_keypoints;
+                vector<float> frame_confidences;
+                int frame_pose;
 
-                read_skel_file(skels_paths[i][j], conf.keypoint_size, keypoints, confidences, ps);
-                compute_descriptors(imgs_paths[i][j], keypoints, conf.descriptor_type_str, descriptors);
+                read_skel_file(skels_paths[i][j], conf.keypoint_size, frame_keypoints, frame_confidences, frame_pose);
+                compute_descriptors(imgs_paths[i][j], frame_keypoints, conf.descriptor_type_str, frame_descriptors);
 
                 // Match the current frame with each model and compute the rank
                 priority_queue<PQRank<float>, vector<PQRank<float> >, PQRank<float> > scores;
                 for (int k = 0; k < models.size(); ++k) {
                     PQRank<float> rank_elem;
-                    rank_elem.score = models[k].match(descriptors, ps, confidences, true, conf, timing);
+                    rank_elem.score = models[k].match(conf, frame_descriptors, frame_pose, frame_confidences,
+                                                      true, timing);
                     rank_elem.class_idx = k;
                     scores.push(rank_elem);
                 }
@@ -107,15 +120,28 @@ int main(int argc, char** argv)
             }
         } // end foreach
 
+        for (int j = 0; j < rates.cols; ++j)
+            rates.col(j).at<float>(0) /= tot_imgs;
 
-        for (int j = 0; j < rates.cols; ++j) {
-            rates.at<float>(0, j) /= tot_imgs;
-        }
+        CMC += rates;
 
         cout << "rates: " << rates << endl;
         cout << "><><><><><><><><><><><><><><><><><><><><><><><><><><" << endl << endl;
         rounds++;
     }
+
+    CMC /= (rounds - 1);
+    cout << "CMC: " << CMC << endl;
+
+    float nAUC = area_under_curve(CMC);
+    cout << "nAUC: " << nAUC * 100 << endl;
+
+    timing.show();
+
+    // Saving results
+    timing.write(conf.res_file_path + "timing/", "t" + get_res_filename(conf));
+    print_cmc_nauc(conf.res_file_path, get_res_filename(conf),
+                   conf.descriptor_type_str, CMC, nAUC);
 
     return 0;
 }
