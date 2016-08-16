@@ -25,7 +25,7 @@
 
 namespace  multiviewbodymodel {
 
-enum OcclusionType { BOTHOCCLUDED, FRAMEOCCLUDED, MODELOCCLUDED, VISIBLE };
+enum OcclusionType { BOTHOCCLUDED, FRAMEOCCLUDED, MODELOCCLUDED, VISIBLE, OCCLUDED};
 
 enum DescriptorType { SIFT, SURF, ORB, FREAK, BRIEF, INVALID };
 
@@ -73,7 +73,7 @@ struct Configuration {
     // From the conf file
     cv::string conf_file_path;
     cv::string res_file_path;
-    cv::string main_path;
+    cv::string dataset_path;
     std::vector<cv::string> persons_names;
     std::vector<cv::string> views_names;
     int model_set_size;
@@ -98,8 +98,10 @@ struct Configuration {
     void show();
 };
 
-// Element used for storing the ground truth class of the current frame with
-// the relative score obtained from the matching function.
+/**
+ * Element used for storing the ground truth class of the current frame with
+ * the relative score obtained from the matching function.
+ */
 template<typename T>
 struct PQRank {
     int class_idx;
@@ -111,11 +113,14 @@ struct PQRank {
     }
 };
 
-// Models a skeleton of one person seen in a scene captured by several cameras.
-// One person is characterized by a number of pose sides (computed from a skeletal tracker,
-// for example) which are used to re-identify a person body seen in the scene.
+/**
+ * Models a skeleton of one person seen in a scene captured by several cameras.
+ * One person is characterized by a number of pose sides (computed from a skeletal
+ * tracker, for example) which are used to re-identify a person body seen in the scene.
+ */
 class MultiviewBodyModel {
 public:
+
     /**
      * Loads the image skeleton into the model, if the poses read already exists then it is replaced
      * with the new one.
@@ -150,11 +155,17 @@ public:
                     bool occlusion_search, const cv::Mat &poses_map, const cv::Mat &kp_map,
                     const cv::Mat &kp_weights, const cv::Mat &ps2keypoints_map, Timing &timing);
 
+    double match(const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf,
+                     const std::vector<std::vector<int> > &matching_poses_map, const std::vector<cv::Mat> &matching_weights,
+                     int norm_type, bool occlusion_search, Timing &timing);
+
     float match(Configuration &conf, const cv::Mat &frame_descriptors, int frame_ps, const std::vector<float> &frame_conf,
                     bool occlusion_search, Timing &timing);
 
 private:
     OcclusionType check_occlusion(float frame_conf, float model_conf);
+
+    OcclusionType check_occlusion(float model_conf);
 
     void occlusion_norm(const cv::Mat &frame_desc, int model_ps, int model_kp_idx,
                                             const cv::Mat &model_poses_map, const cv::Mat &model_ps2keypoints_map,
@@ -167,6 +178,20 @@ private:
                                           const cv::Mat &model_kp_map, const cv::Mat &model_kp_weights,
                                           cv::Mat &out_model_descriptors, cv::Mat &out_descriptors_weights,
                                           cv::Mat &keypoints_mask, Timing &timing);
+
+    cv::Mat get_alternative_descriptor(int ps_idx, int kp_idx, const cv::Mat &poses_map, const cv::Mat &kp_map,
+                                           const cv::Mat &ps2keypoints_map);
+
+    double find_min_match_distance(std::vector<cv::DMatch> matches);
+
+    int get_matching_index(int ps_frame, int ps_model = 0);
+
+    void compute_weighted_distance(int frame_pose, const cv::Mat &frame_descriptors,
+                                       const cv::Mat &model_descriptors, int kp_idx, int matching_idx,
+                                       const std::vector<std::vector<int> > &matching_poses_map,
+                                       const std::vector<cv::Mat> &matching_weights, int norm_type,
+                                       OcclusionType occlusion_type, double &w_avg, double &sum_w);
+
 
     // Store the pose number (i.e. 1:front, 2:back, 3:left-side, 4:right-side)
     std::vector<int> pose_number_;
@@ -190,9 +215,15 @@ private:
 // ------------------------------------------------------------------------- //
 
 
-// Parse input arguments and initialize the configuration object.
+/**
+ * Parse input arguments and initialize the configuration object.
+ */
 void parse_args(int argc, char **argv, Configuration &out_conf);
 
+/**
+ * Reads the configuration file and stores all parameters settings in configuration.
+ * @param configuration
+ */
 void read_config_file(Configuration &configuration);
 
 DescriptorType char2descriptor_type(const char *str);
@@ -246,6 +277,8 @@ float area_under_curve(cv::Mat mat);
 cv::string get_res_filename(Configuration conf);
 
 void print_cmc_nauc(cv::string path, std::string settings, cv::string desc_type, cv::Mat CMC, float nAUC);
+
+void vec2mat(const std::vector<cv::Mat> &vec, cv::Mat &out_mat);
 
 }
 #endif // MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H
