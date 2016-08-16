@@ -15,7 +15,6 @@
 
 #include <opencv/cvaux.h>
 #include "MultiviewBodyModel.h"
-#include <stdlib.h>
 
 using namespace multiviewbodymodel;
 using namespace cv;
@@ -26,101 +25,18 @@ using std::endl;
 using std::priority_queue;
 
 
-void test_match();
-void init_poses_map(vector<vector<int> > &poses_map, vector<Mat> &weights);
+//void test_match();
 
 int main(int argc, char **argv) {
 
-//    test_match();
-
-    // Reading command line and parameters setting
+    // Load settings: conf will contains all basic
+    // information to run the program
     Configuration conf;
-    if (argc < 6) {
-        show_help();
-    }
-    else {
-        parse_args(argc, argv, conf);
-        if (!conf.conf_file_path.empty())
-            read_config_file(conf);
-        else {
-            cerr << "Missing configuration file." << endl;
-            exit(-1);
-        }
-        conf.show();
-    }
+    parse_args(argc, argv, conf);
+    read_config_file(conf);
+    conf.show();
 
-    vector<vector<int> > poses_map;
-    vector<Mat> weights;
-    float w1vs1[15] = {1, 1, 1, 1, 0.5,
-                       1, 1, 0.5, 1, 1,
-                       1, 0.3, 1, 1, 0.3};
-    float w1vs2[15] = {0.1, 0.1, 1, 1, 0.1,
-                       1, 1, 0.1, 1, 0.1,
-                       1, 1, 0.1, 1, 1};
-    float w1vs3[15] = {0.3, 0.1, 1, 1, 0.1,
-                       0.1, 0.1, 0.1, 0.1, 1,
-                       0.3, 0.3, 0.1, 0.1, 0.1};
-    float w1vs4[15] = {0.3, 0.1, 0.1, 0.1, 0.1,
-                       1, 1, 0.1, 0.1, 0.1,
-                       0.1, 0.1, 1, 0.3, 0.3};
-    float w2vs2[15] = {1, 1, 1, 1, 0.5,
-                       1, 1, 0.5, 1, 1,
-                       1, 0.5, 1, 1, 0.5};
-    float w2vs3[15] = {0.1, 0.1, 0.5, 0.5, 0.1,
-                       0.1, 0.1, 0.1, 0.1, 0.5,
-                       0.5, 0.5, 0.1, 0.1, 0.1};
-    float w2vs4[15] = {0.1, 0.1, 0.1, 0.1, 0.1,
-                       0.5, 0.5, 0.5, 0.1, 0.1,
-                       0.1, 0.1, 0.5, 0.5, 0.5};
-    float w3vs3[15] = {1, 1, 1, 1, 1,
-                       0.1, 0.1, 0.1, 0.5, 1,
-                       1, 1, 0.1, 1, 1};
-    float w3vs4[15] = {0.1, 0.1, 0.5, 0.2, 0.2,
-                       0.5, 0.2, 0.2, 0.5, 0.2,
-                       0.1, 0.1, 0.1, 0.1, 0.1};
-    float w4vs4[15] = {1, 1, 0.1, 0.1, 0.1,
-                       1, 1, 1, 0.5, 0.1,
-                       0.5, 0.5, 1, 1, 1};
-
-    Mat weights0(15, 1, CV_32F, w1vs1);
-    Mat weights1(15, 1, CV_32F, w2vs2);
-    Mat weights2(15, 1, CV_32F, w3vs3);
-    Mat weights3(15, 1, CV_32F, w4vs4);
-    Mat weights4(15, 1, CV_32F, w1vs2);
-    Mat weights5(15, 1, CV_32F, w1vs3);
-    Mat weights6(15, 1, CV_32F, w1vs4);
-    Mat weights7(15, 1, CV_32F, w2vs3);
-    Mat weights8(15, 1, CV_32F, w2vs4);
-    Mat weights9(15, 1, CV_32F, w3vs4);
-
-    weights.push_back(weights0);
-    weights.push_back(weights1);
-    weights.push_back(weights2);
-    weights.push_back(weights3);
-    weights.push_back(weights4);
-    weights.push_back(weights5);
-    weights.push_back(weights6);
-    weights.push_back(weights7);
-    weights.push_back(weights8);
-    weights.push_back(weights9);
-
-
-    const int size = 3;
-    int pmap_data[4][size] = {2, 3, 4, // pose1
-                              1, 3, 4, // pose2
-                              1, 2, 4, // pose3
-                              1, 2, 3}; // pose4
-
-    for (int i = 0; i < 4; ++i) {
-        vector<int> pmap;
-        for (int j = 0; j < size; ++j) {
-            pmap.push_back(pmap_data[i][j]);
-        }
-        poses_map.push_back(pmap);
-    }
-
-
-    // Loading paths from the configuration parameters and
+    // Load paths from the configuration parameters and
     // computing the total number of images in the dataset
     vector<vector<string> > imgs_paths;
     vector<vector<string> > skels_paths;
@@ -161,7 +77,7 @@ int main(int argc, char **argv) {
         Mat rates;
         rates = Mat::zeros(1, static_cast<int>(models_set.size()), CV_32F);
 
-        // foreach image in the data set do
+        // Foreach image in the data set do
         for (int i = 0; i < skels_paths.size(); ++i) {
             for (int j = 0; j < skels_paths[i].size(); ++j) {
                 Mat frame_descriptors;
@@ -172,18 +88,14 @@ int main(int argc, char **argv) {
                 read_skel_file(skels_paths[i][j], conf.keypoint_size, frame_keypoints, frame_confidences, frame_pose);
                 compute_descriptors(imgs_paths[i][j], frame_keypoints, conf.descriptor_type_str, frame_descriptors);
 
-//                cout << skels_paths[i][j] << " with" << endl;
-
                 // Match the current frame with each model and compute the rank
                 priority_queue<PQRank<float>, vector<PQRank<float> >, PQRank<float> > scores;
                 for (int k = 0; k < models.size(); ++k) {
                     PQRank<float> rank_elem;
 
-                    rank_elem.score = models[k].match(frame_descriptors, frame_pose, frame_confidences, poses_map,
-                                                      weights, conf.norm_type, true, timing);
+                    rank_elem.score = models[k].match(conf, frame_descriptors, frame_pose, frame_confidences, timing);
                     rank_elem.class_idx = k;
                     scores.push(rank_elem);
-//                    cout << "Model " << k << " " << rank_elem.score << endl;
 
                 }
 
@@ -193,11 +105,9 @@ int main(int argc, char **argv) {
                 for (int k = rank_idx; k < rates.cols; ++k) {
                     rates.at<float>(0, k)++;
                 }
-
             }
         } // end foreach
 
-        tot_imgs = rates.col(models_set.size()-1).at<float>(0);
         for (int j = 0; j < rates.cols; ++j)
             rates.col(j).at<float>(0) /= tot_imgs;
 
@@ -218,139 +128,135 @@ int main(int argc, char **argv) {
 
     // Saving results
     timing.write(conf.res_file_path + "timing/", "t" + get_res_filename(conf));
-    print_cmc_nauc(conf.res_file_path, get_res_filename(conf),
+    write_cmc_nauc(conf.res_file_path, get_res_filename(conf),
                    conf.descriptor_type_str, CMC, nAUC);
 
     return 0;
 }
 
-void test_match() {
-
-    vector<float> confidences1, confidences2;
-    int ps1, ps2;
-
-    const int size = 6;
-    // BACK
-//    string path1 = "../ds/gianluca_sync/c00000";
-//    string paths[size] = {"../ds/gianluca_sync/r00031", "../ds/marco_sync/r00051", "../ds/nicola_sync/c00000",
-//                          "../ds/stefanog_sync/r00061", "../ds/stefanom_sync/r00031", "../ds/matteol_sync/r00064"};
-////    string paths[size] = {"../ds/gianluca_sync/r00031", "../ds/gianluca_sync/r00026", "../ds/gianluca_sync/r00056",
-////                          "../ds/gianluca_sync/l00047","../ds/gianluca_sync/l00052","../ds/gianluca_sync/c00052"};
-//    float weights_data[15] = {1, 1, 1, 1.1, 0,
-//                              1.2, 1.1, 0, 2, 0,
-//                              0, 0, 0, 0, 0};
-    // FRONT
-//    string path1 = "../ds/gianluca_sync/c00011";
-//    string paths[size] = {"../ds/gianluca_sync/c00015", "../ds/marco_sync/c00010", "../ds/nicola_sync/c00012",
-//                          "../ds/stefanog_sync/l00050", "../ds/stefanom_sync/l00017", "../ds/matteol_sync/r00055"};
-////        string paths[size] = {"../ds/gianluca_sync/c00013", "../ds/gianluca_sync/c00040", "../ds/gianluca_sync/c00044",
-////                          "../ds/gianluca_sync/r00014","../ds/gianluca_sync/c00067","../ds/gianluca_sync/l00037"};
-//    float weights_data[15] = {1.5,1.5,1.2,1,0,
-//                             1.2,1,0,2,1.2,
-//                              1.1,0,1.2,1.1,0};
-//    // LEFT
-    string path1 = "../ds/gianluca_sync/c00005";
-    string paths[size] = {"../ds/gianluca_sync/c00036", "../ds/marco_sync/c00027", "../ds/nicola_sync/r00031",
-                          "../ds/stefanog_sync/l00046", "../ds/stefanom_sync/r00020", "../ds/matteol_sync/l00045"};
-//        string paths[size] = {"../ds/gianluca_sync/c00031", "../ds/gianluca_sync/l00004", "../ds/gianluca_sync/l00026",
-//                          "../ds/gianluca_sync/r00038","../ds/gianluca_sync/r00012","../ds/gianluca_sync/c00032"};
-    float weights_data[15] = {1.5,1.2,1.1,1.1,1.1,
-                              0,0,0,0,1,
-                              1,1,0,1,1};
-
-    vector<cv::KeyPoint> keypoints1;
-    read_skel_file(path1 + "_skel.txt", 3, keypoints1, confidences1, ps1);
-    Mat img1 = imread(path1 + ".png");
-    Mat descriptors1;
-    cv::SiftDescriptorExtractor extractor;
-    extractor.compute(img1, keypoints1, descriptors1);
-
-
-    for (int k = 0; k < size; ++k) {
-        vector<KeyPoint> keypoints;
-        read_skel_file(paths[k] + "_skel.txt", 3, keypoints, confidences2, ps2);
-        Mat img = imread(paths[k] + ".png");
-        Mat descriptors;
-
-        extractor.compute(img, keypoints, descriptors);
-        cv::BFMatcher matcher(NORM_L2, true);
-        vector<DMatch> matches;
-        matcher.match(descriptors1, descriptors, matches);
-
-
-        float min = 1000;
-
-        for (int j = 0; j < matches.size(); ++j) {
-            float dist = matches[j].distance;
-            if (dist < min)
-                min = dist;
-        }
-
-        cout << path1 << "vs" << paths[k] << endl;
-
-        double avg_matches = 0.0;
-        int cnt_matches = 0;
-        vector<DMatch> good;
-        for (int i = 0; i < matches.size(); ++i) {
-            if (matches[i].queryIdx == matches[i].trainIdx && matches[i].distance < 3 * min) {
-                avg_matches += matches[i].distance;
-                cnt_matches++;
-
-                good.push_back(matches[i]);
-            }
-        }
-
-        avg_matches /= cnt_matches;
-
-        double score = 0.0;
-        double sum_W = 0.0;
-        for (int i = 0; i < matches.size(); ++i) {
-            if (matches[i].queryIdx == matches[i].trainIdx && matches[i].distance < 3 * min) {
-                double w = weights_data[i];
-                double diff = std::abs(matches[i].distance - avg_matches);
-                cout << i << ": " << matches[i].queryIdx << " " << matches[i].trainIdx << " " << diff << endl;
-                score += w * (1 / diff);
-                sum_W += w;
-            }
-        }
-
-        for (int j = 0; j < descriptors1.rows; ++j) {
-            double w = weights_data[j];
-            score += w * 1 / std::abs(norm(descriptors1, descriptors, NORM_L2) - avg_matches);
-            sum_W += w;
-        }
-
-        score /= sum_W;
-//        score *= cnt_matches;
-
-
-
-        cout << "score = " << 1 / score << endl << endl;
-
-        namedWindow("Results", 1);
-
-        Mat img_matches;
-        drawMatches(img1, keypoints1, img, keypoints, good, img_matches);
-        imshow("Results", img_matches);
-
-
-        waitKey(0);
-
-    }
-
-
-
-//    FlannBasedMatcher matcher;
-
-
-
-
-
-
-
-
-}
-
-void init_poses_map(vector<vector<int> > &poses_map, vector<Mat> &weights) {
-
-}
+//void test_match() {
+//
+//    vector<float> confidences1, confidences2;
+//    int ps1, ps2;
+//
+//    const int size = 6;
+//    // BACK
+////    string path1 = "../ds/gianluca_sync/c00000";
+////    string paths[size] = {"../ds/gianluca_sync/r00031", "../ds/marco_sync/r00051", "../ds/nicola_sync/c00000",
+////                          "../ds/stefanog_sync/r00061", "../ds/stefanom_sync/r00031", "../ds/matteol_sync/r00064"};
+//////    string paths[size] = {"../ds/gianluca_sync/r00031", "../ds/gianluca_sync/r00026", "../ds/gianluca_sync/r00056",
+//////                          "../ds/gianluca_sync/l00047","../ds/gianluca_sync/l00052","../ds/gianluca_sync/c00052"};
+////    float weights_data[15] = {1, 1, 1, 1.1, 0,
+////                              1.2, 1.1, 0, 2, 0,
+////                              0, 0, 0, 0, 0};
+//    // FRONT
+////    string path1 = "../ds/gianluca_sync/c00011";
+////    string paths[size] = {"../ds/gianluca_sync/c00015", "../ds/marco_sync/c00010", "../ds/nicola_sync/c00012",
+////                          "../ds/stefanog_sync/l00050", "../ds/stefanom_sync/l00017", "../ds/matteol_sync/r00055"};
+//////        string paths[size] = {"../ds/gianluca_sync/c00013", "../ds/gianluca_sync/c00040", "../ds/gianluca_sync/c00044",
+//////                          "../ds/gianluca_sync/r00014","../ds/gianluca_sync/c00067","../ds/gianluca_sync/l00037"};
+////    float weights_data[15] = {1.5,1.5,1.2,1,0,
+////                             1.2,1,0,2,1.2,
+////                              1.1,0,1.2,1.1,0};
+////    // LEFT
+//    string path1 = "../ds/gianluca_sync/c00005";
+//    string paths[size] = {"../ds/gianluca_sync/c00036", "../ds/marco_sync/c00027", "../ds/nicola_sync/r00031",
+//                          "../ds/stefanog_sync/l00046", "../ds/stefanom_sync/r00020", "../ds/matteol_sync/l00045"};
+////        string paths[size] = {"../ds/gianluca_sync/c00031", "../ds/gianluca_sync/l00004", "../ds/gianluca_sync/l00026",
+////                          "../ds/gianluca_sync/r00038","../ds/gianluca_sync/r00012","../ds/gianluca_sync/c00032"};
+//    float weights_data[15] = {1.5,1.2,1.1,1.1,1.1,
+//                              0,0,0,0,1,
+//                              1,1,0,1,1};
+//
+//    vector<cv::KeyPoint> keypoints1;
+//    read_skel_file(path1 + "_skel.txt", 3, keypoints1, confidences1, ps1);
+//    Mat img1 = imread(path1 + ".png");
+//    Mat descriptors1;
+//    cv::SiftDescriptorExtractor extractor;
+//    extractor.compute(img1, keypoints1, descriptors1);
+//
+//
+//    for (int k = 0; k < size; ++k) {
+//        vector<KeyPoint> keypoints;
+//        read_skel_file(paths[k] + "_skel.txt", 3, keypoints, confidences2, ps2);
+//        Mat img = imread(paths[k] + ".png");
+//        Mat descriptors;
+//
+//        extractor.compute(img, keypoints, descriptors);
+//        cv::BFMatcher matcher(NORM_L2, true);
+//        vector<DMatch> matches;
+//        matcher.match(descriptors1, descriptors, matches);
+//
+//
+//        float min = 1000;
+//
+//        for (int j = 0; j < matches.size(); ++j) {
+//            float dist = matches[j].distance;
+//            if (dist < min)
+//                min = dist;
+//        }
+//
+//        cout << path1 << "vs" << paths[k] << endl;
+//
+//        double avg_matches = 0.0;
+//        int cnt_matches = 0;
+//        vector<DMatch> good;
+//        for (int i = 0; i < matches.size(); ++i) {
+//            if (matches[i].queryIdx == matches[i].trainIdx && matches[i].distance < 3 * min) {
+//                avg_matches += matches[i].distance;
+//                cnt_matches++;
+//
+//                good.push_back(matches[i]);
+//            }
+//        }
+//
+//        avg_matches /= cnt_matches;
+//
+//        double score = 0.0;
+//        double sum_W = 0.0;
+//        for (int i = 0; i < matches.size(); ++i) {
+//            if (matches[i].queryIdx == matches[i].trainIdx && matches[i].distance < 3 * min) {
+//                double w = weights_data[i];
+//                double diff = std::abs(matches[i].distance - avg_matches);
+//                cout << i << ": " << matches[i].queryIdx << " " << matches[i].trainIdx << " " << diff << endl;
+//                score += w * (1 / diff);
+//                sum_W += w;
+//            }
+//        }
+//
+//        for (int j = 0; j < descriptors1.rows; ++j) {
+//            double w = weights_data[j];
+//            score += w * 1 / std::abs(norm(descriptors1, descriptors, NORM_L2) - avg_matches);
+//            sum_W += w;
+//        }
+//
+//        score /= sum_W;
+////        score *= cnt_matches;
+//
+//
+//
+//        cout << "score = " << 1 / score << endl << endl;
+//
+//        namedWindow("Results", 1);
+//
+//        Mat img_matches;
+//        drawMatches(img1, keypoints1, img, keypoints, good, img_matches);
+//        imshow("Results", img_matches);
+//
+//
+//        waitKey(0);
+//
+//    }
+//
+//
+//
+////    FlannBasedMatcher matcher;
+//
+//
+//
+//
+//
+//
+//
+//
+//}
