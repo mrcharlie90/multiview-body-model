@@ -32,7 +32,7 @@ using cv::getTickFrequency;
 
 
 void MultiviewBodyModel::read_pose_compute_descriptors(string img_path, string skel_path, int keypoint_size,
-                                                       string descriptor_extractor_type, Timing &timing) {
+                                                       DescriptorType descriptor_extractor_type, Timing &timing) {
     Mat descriptors;
     vector<KeyPoint> keypoints;
     vector<float> confidences;
@@ -268,22 +268,28 @@ int MultiviewBodyModel::get_matching_index(int ps_frame, int ps_model) {
 //                           Function definitions                            //
 // ------------------------------------------------------------------------- //
 
-void multiviewbodymodel::Timing::write(string path, string name) {
+void multiviewbodymodel::Timing::write(Configuration conf) {
     assert(enabled);
 
-    std::ofstream file(path + name + ".dat", std::ofstream::app);
+    stringstream ss_name;
+    ss_name << "time" << "_N" << conf.persons_names.size() << "_A";
+    for (int j = 0; j < conf.poses.size(); ++j) {
+        ss_name << conf.poses[j];
+    }
+    ss_name << "_O" << conf.occlusion_search;
+
+    std::ofstream file(conf.res_file_path + "timing/" + ss_name.str() + ".dat", std::ofstream::app);
     if (file.is_open()) {
         if (file.tellp() == 0)
-            file << "name   one_match   extraction    models_loading   descr_creation" << endl;
+            file << "name one_match extraction models_loading" << endl;
 
-        file << name << " "
+        file << conf.descriptor_type_str << " "
              << one_match / n_one_match << " "
              << extraction  / n_extraction << " "
-             << models_loading / n_models_loading << " "
-             << descr_creation / n_descr_creation << endl;
+             << models_loading / n_models_loading << " " << endl;
     }
     else
-        cerr << endl << "Timing::write(): Cannot open the file!" << endl;
+        cerr << endl << "Timing::write(): Cannot open the file! " << conf.res_file_path + "timing/" + ss_name.str() + ".dat" << endl;
     file.close();
 }
 
@@ -293,7 +299,6 @@ void multiviewbodymodel::Timing::show() {
     cout << "ONE_MATCH: " << one_match / n_one_match << " s" << endl;
     cout << "EXTRACTION: " << extraction  / n_extraction << " s" << endl;
     cout << "MODELS_LOADING: " << models_loading / n_models_loading << " s" << endl;
-    cout << "DESCRIPTOR_CONSTRUCTION: " << descr_creation / n_descr_creation << " s" << endl;
     cout << "-----------------------------------------------" << " s" << endl;
 }
 
@@ -790,7 +795,7 @@ void read_skel_file(const string &skel_path, int keypoint_size, vector<cv::KeyPo
 }
 
 void compute_descriptors(const std::string &img_path, const std::vector<cv::KeyPoint> &in_keypoints,
-                         const cv::string &descriptor_extractor_type, cv::Mat &out_descriptors) {
+                         DescriptorType descriptor_extractor_type, cv::Mat &out_descriptors) {
 
 
     // Read the image file
@@ -804,26 +809,40 @@ void compute_descriptors(const std::string &img_path, const std::vector<cv::KeyP
     vector<cv::KeyPoint> tmp_keypoints(in_keypoints);
     cv::Mat tmp_descriptors;
 
-    if (descriptor_extractor_type == "SIFT") {
-        cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 15, 1.6);
-        sift_extractor.compute(img, tmp_keypoints, tmp_descriptors);
+    switch (descriptor_extractor_type) {
+        case SIFT:
+        {
+            cv::SiftDescriptorExtractor sift_extractor(0, 3, 0.04, 15, 1.6);
+            sift_extractor.compute(img, tmp_keypoints, tmp_descriptors);
+            break;
+        }
+        case SURF:
+        {
+            cv::SurfDescriptorExtractor surf_extractor(0, 4, 2, true, true);
+            surf_extractor.compute(img, tmp_keypoints, tmp_descriptors);
+            break;
+        }
+        case BRIEF:
+        {
+            cv::BriefDescriptorExtractor brief_extractor(64);
+            brief_extractor.compute(img, tmp_keypoints, tmp_descriptors);
+            break;
+        }
+        case ORB:
+        {
+            cv::OrbDescriptorExtractor orb_extractor(0, 0, 0, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
+            orb_extractor.compute(img, tmp_keypoints, tmp_descriptors);
+            break;
+        }
+        case FREAK:
+        {
+            cv::FREAK freak_extractor(true, true, 22.0f, 4, vector<int>());
+            freak_extractor.compute(img, tmp_keypoints, tmp_descriptors);
+            break;
+        }
+        default:;
     }
-    else if (descriptor_extractor_type == "SURF") {
-        cv::SurfDescriptorExtractor surf_extractor(0, 4, 2, true, true);
-        surf_extractor.compute(img, tmp_keypoints, tmp_descriptors);
-    }
-    else if (descriptor_extractor_type == "BRIEF") {
-        cv::BriefDescriptorExtractor brief_extractor(64);
-        brief_extractor.compute(img, tmp_keypoints, tmp_descriptors);
-    }
-    else if (descriptor_extractor_type == "ORB") {
-        cv::OrbDescriptorExtractor orb_extractor(0, 0, 0, 31, 0, 2, cv::ORB::FAST_SCORE, 31);
-        orb_extractor.compute(img, tmp_keypoints, tmp_descriptors);
-    }
-    else if (descriptor_extractor_type == "FREAK") {
-        cv::FREAK freak_extractor(true, true, 22.0f, 4, vector<int>());
-        freak_extractor.compute(img, tmp_keypoints, tmp_descriptors);
-    }
+
 
     // Once descriptors are computed, check if some keypoints are removed by the extractor algorithm
     Mat descriptors(static_cast<int>(in_keypoints.size()), tmp_descriptors.cols, tmp_descriptors.type());
@@ -891,7 +910,7 @@ void init_models(Configuration conf, int rounds, const std::vector<std::vector<c
             int frame_idx = pose_idx * rounds;
             models[i].read_pose_compute_descriptors(imgs_paths[i][models_set[i][frame_idx]],
                                                     skels_paths[i][models_set[i][frame_idx]],
-                                                    conf.keypoint_size, conf.descriptor_type_str, timing);
+                                                    conf.keypoint_size, conf.descriptor_type, timing);
 
         }
     }
@@ -922,8 +941,15 @@ string get_res_filename(Configuration conf) {
     return ss.str();
 }
 
-void write_cmc_nauc(cv::string path, string settings, cv::string desc_type, Mat CMC, float nAUC) {
-    std::ofstream file(path + "CMC_" + desc_type + settings + ".dat", std::ofstream::out);
+
+void write_cmc_nauc(Configuration conf, Mat CMC, float nAUC) {
+    stringstream ss_name;
+    ss_name << "CMC_" << conf.descriptor_type_str << "_N" << conf.persons_names.size() << "_A";
+    for (int j = 0; j < conf.poses.size(); ++j) {
+        ss_name << conf.poses[j];
+    }
+    ss_name << "_O" << conf.occlusion_search;
+    std::ofstream file(conf.res_file_path + ss_name.str() + ".dat", std::ofstream::out);
     if (file.is_open()) {
         file << "rank   recrate" << endl;
 
@@ -935,18 +961,25 @@ void write_cmc_nauc(cv::string path, string settings, cv::string desc_type, Mat 
         cerr << endl << "write_cmc_nauc(): Cannot open the file!" << endl;
     file.close();
 
-    file.open(path + "nAU" + settings + ".dat", std::ofstream::app);
+    ss_name.str("");
+
+    ss_name << "nAUC_N" << conf.persons_names.size() << "_A";
+    for (int j = 0; j < conf.poses.size(); ++j) {
+        ss_name << conf.poses[j];
+    }
+    ss_name << "_O" << conf.occlusion_search;
+
+    file.open(conf.res_file_path + ss_name.str() + ".dat", std::ofstream::app);
     if (file.is_open()) {
         if (file.tellp() == 0)
             file << "name   nauc" << endl;
-        file << desc_type << " " << nAUC << endl;
+        file << conf.descriptor_type_str << " " << nAUC << endl;
     }
     else
         cerr << endl << "write_cmc_nauc(): Cannot open the file!" << endl;
     file.close();
+
 }
-
-
 } // end namespace
 
 

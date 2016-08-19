@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
                 int frame_pose;
 
                 read_skel_file(skels_paths[i][j], conf.keypoint_size, frame_keypoints, frame_confidences, frame_pose);
-                compute_descriptors(imgs_paths[i][j], frame_keypoints, conf.descriptor_type_str, frame_descriptors);
+                compute_descriptors(imgs_paths[i][j], frame_keypoints, conf.descriptor_type, frame_descriptors);
 
                 // Match the current frame with each model and compute the rank
                 priority_queue<PQRank<float>, vector<PQRank<float> >, PQRank<float> > scores;
@@ -127,9 +127,8 @@ int main(int argc, char **argv) {
     timing.show();
 
     // Saving results
-    timing.write(conf.res_file_path + "timing/", "t" + get_res_filename(conf));
-    write_cmc_nauc(conf.res_file_path, get_res_filename(conf),
-                   conf.descriptor_type_str, CMC, nAUC);
+    timing.write(conf);
+    write_cmc_nauc(conf, CMC, nAUC);
 
     return 0;
 }

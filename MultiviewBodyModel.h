@@ -30,42 +30,6 @@ enum OcclusionType { MODELOCCLUDED, VISIBLE, OCCLUDED};
 enum DescriptorType { SIFT, SURF, ORB, FREAK, BRIEF, INVALID };
 
 /**
- * Used for performance logging.
- * There a field for each time that will be stored.
- *
- * Call enable() before use
- * write() save the results in a file named timing.xml
- */
-struct Timing {
-    // All methods reads this flag to check wether
-    // the stats logging are active
-    bool enabled;
-    std::string name;
-
-    // Average times
-    double one_match;
-    int n_one_match;
-    double extraction;
-    int n_extraction;
-    double models_loading;
-    int n_models_loading;
-    double descr_creation;
-    int n_descr_creation;
-
-    void enable(std::string desc_type) {
-        assert(!desc_type.empty());
-        name = desc_type;
-        enabled = true;
-    }
-
-    // Writes all stats values in a file named timing.xml
-    void write(cv::string path, cv::string name);
-
-    // Show the all the stats value on the console
-    void show();
-};
-
-/**
  * Group all the necessary information for obtaining training(testing) files
  * and the functions' parameters.
  */
@@ -94,6 +58,40 @@ struct Configuration {
     bool occlusion_search;
 
     // Shows the parameters loaded from the console and from the config.xml file
+    void show();
+};
+
+/**
+ * Used for performance logging.
+ * There a field for each time that will be stored.
+ *
+ * Call enable() before use
+ * write() save the results in a file named timing.xml
+ */
+struct Timing {
+    // All methods reads this flag to check wether
+    // the stats logging are active
+    bool enabled;
+    std::string name;
+
+    // Average times
+    double one_match;
+    int n_one_match;
+    double extraction;
+    int n_extraction;
+    double models_loading;
+    int n_models_loading;
+
+    void enable(std::string desc_type) {
+        assert(!desc_type.empty());
+        name = desc_type;
+        enabled = true;
+    }
+
+    // Writes all stats values in a file named timing.xml
+    void write(Configuration conf);
+
+    // Show the all the stats value on the console
     void show();
 };
 
@@ -130,7 +128,7 @@ public:
      * @param timing if enabled, it will store the descriptor computation execution time
      */
     void read_pose_compute_descriptors(cv::string img_path, cv::string skel_path,
-                                       int keypoint_size, cv::string descriptor_extractor_type,
+                                       int keypoint_size, DescriptorType descriptor_extractor_type,
                                        Timing &timing);
 
     /**
@@ -298,7 +296,7 @@ void read_skel_file(const cv::string &skel_path, int keypoint_size, std::vector<
  * @param out_descriptors descriptors computed
  */
 void compute_descriptors(const std::string &img_path, const std::vector<cv::KeyPoint> &in_keypoints,
-                         const cv::string &descriptor_extractor_type, cv::Mat &out_descriptors);
+                         DescriptorType descriptor_extractor_type, cv::Mat &out_descriptors);
 
 /**
  * Loads all persons paths to images and skeletons files.
@@ -406,12 +404,11 @@ cv::string get_res_filename(Configuration conf);
 
 /**
  * Writes the results in the right folders.
- * @param path path where to store the results
- * @param settings
- * @param desc_type
+ * @param conf configuration file
  * @param CMC
  * @param nAUC
  */
-void write_cmc_nauc(cv::string path, std::string settings, cv::string desc_type, cv::Mat CMC, float nAUC);
+void write_cmc_nauc(Configuration conf, cv::Mat CMC, float nAUC);
+
 }
 #endif // MULTIVIEWBODYMODEL_MULTIVIEWBODYMODEL_H
