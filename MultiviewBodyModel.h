@@ -101,7 +101,7 @@ struct Timing {
  */
 template<typename T>
 struct PQRank {
-    int class_idx;
+    int g_truth;
     T score;
 
     // Comparator for the priority queue

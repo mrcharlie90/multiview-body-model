@@ -882,7 +882,7 @@ int get_rank_index(priority_queue<PQRank<T>, vector<PQRank<T> >, PQRank<T> > pq,
 
     // Searching for the element with the same class and get the rank
     for (int i = 0; i < pq.size(); i++) {
-        if (scores.top().class_idx == ground_truth)
+        if (scores.top().g_truth == ground_truth)
             return i;
         scores.pop();
     }
@@ -906,14 +906,15 @@ void init_models(Configuration conf, int rounds, const std::vector<std::vector<c
 
     float t0_models_loading = timing.enabled ? (float)getTickCount() : 0;
     for (int i = 0; i < models_set.size(); ++i) {
-        for (int pose_idx = 0; pose_idx < conf.poses.size(); ++pose_idx) {
-            int frame_idx = pose_idx * rounds;
+        int tot_poses_num = conf.poses.size();
+        for (int pose_idx = 0; pose_idx < tot_poses_num; ++pose_idx) {
+            int frame_idx = pose_idx + (rounds * tot_poses_num);
             models[i].read_pose_compute_descriptors(imgs_paths[i][models_set[i][frame_idx]],
                                                     skels_paths[i][models_set[i][frame_idx]],
                                                     conf.keypoint_size, conf.descriptor_type, timing);
-
         }
     }
+
     timing.enabled ? timing.models_loading += ((float)getTickCount() - t0_models_loading) / getTickFrequency() : 0;
     timing.enabled ? timing.n_models_loading++ : timing.n_models_loading = 0;
 }
@@ -979,7 +980,26 @@ void write_cmc_nauc(Configuration conf, Mat CMC, float nAUC) {
         cerr << endl << "write_cmc_nauc(): Cannot open the file!" << endl;
     file.close();
 
+    ss_name.str("");
+
+    ss_name << "rank1_N" << conf.persons_names.size() << "_A";
+    for (int j = 0; j < conf.poses.size(); ++j) {
+        ss_name << conf.poses[j];
+    }
+    ss_name << "_O" << conf.occlusion_search;
+
+    file.open(conf.res_file_path + ss_name.str() + ".dat", std::ofstream::app);
+    if (file.is_open()) {
+        if (file.tellp() == 0)
+            file << "name   rank1" << endl;
+        file << conf.descriptor_type_str << " " << CMC.at<float>(0, 0) << endl;
+    }
+    else
+        cerr << endl << "write_cmc_nauc(): Cannot open the file!" << endl;
+    file.close();
+
 }
+
 } // end namespace
 
 

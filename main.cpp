@@ -24,6 +24,7 @@ using std::cerr;
 using std::endl;
 using std::priority_queue;
 
+typedef priority_queue<PQRank<float>, vector<PQRank<float> >, PQRank<float> > pq_rank_float;
 
 //void test_match();
 
@@ -60,16 +61,17 @@ int main(int argc, char **argv) {
 
     // Models loading: the # of poses chosen from the settings are loaded
     // in each model for each round
-    int rounds = 1;
-    while (rounds <= models_per_person) {
+    int rounds = 0;
+    while (rounds < models_per_person) {
         // Create empty MultiviewBodyModel object to store information
         // contained in the model set
         vector<MultiviewBodyModel> models;
         empty_models(static_cast<int>(models_set.size()), models);
 
-        printf("------------- %s Models loaded, rounds: %d -------------\n",
+        b_line(conf);
+        printf(" %s Models loaded, rounds: %d ",
                conf.descriptor_type_str.c_str(), rounds);
-
+        e_line(conf);
         // Creates the models for each person defined in the configuration settings
         init_models(conf, rounds, imgs_paths, skels_paths, models_set, models, timing);
 
@@ -89,14 +91,13 @@ int main(int argc, char **argv) {
                 compute_descriptors(imgs_paths[i][j], frame_keypoints, conf.descriptor_type, frame_descriptors);
 
                 // Match the current frame with each model and compute the rank
-                priority_queue<PQRank<float>, vector<PQRank<float> >, PQRank<float> > scores;
+                pq_rank_float scores;
                 for (int k = 0; k < models.size(); ++k) {
                     PQRank<float> rank_elem;
 
                     rank_elem.score = models[k].match(conf, frame_descriptors, frame_pose, frame_confidences, timing);
-                    rank_elem.class_idx = k;
+                    rank_elem.g_truth = k;
                     scores.push(rank_elem);
-
                 }
 
                 // Update all rates
@@ -118,7 +119,7 @@ int main(int argc, char **argv) {
         rounds++;
     }
 
-    CMC /= (rounds - 1);
+    CMC /= rounds;
     cout << "CMC: " << CMC << endl;
 
     float nAUC = area_under_curve(CMC);
