@@ -68,10 +68,9 @@ int main(int argc, char **argv) {
         vector<MultiviewBodyModel> models;
         empty_models(static_cast<int>(models_set.size()), models);
 
-        b_line(conf);
-        printf(" %s Models loaded, rounds: %d ",
+        printf("------------- %s Models loaded, rounds: %d -------------\n",
                conf.descriptor_type_str.c_str(), rounds);
-        e_line(conf);
+
         // Creates the models for each person defined in the configuration settings
         init_models(conf, rounds, imgs_paths, skels_paths, models_set, models, timing);
 
@@ -109,6 +108,7 @@ int main(int argc, char **argv) {
             }
         } // end foreach
 
+        cout << rates << endl;
         for (int j = 0; j < rates.cols; ++j)
             rates.col(j).at<float>(0) /= tot_imgs;
 

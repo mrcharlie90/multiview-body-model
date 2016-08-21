@@ -396,13 +396,6 @@ int get_rank_index(std::priority_queue<PQRank<T>, std::vector<PQRank<T> >, PQRan
 float area_under_curve(cv::Mat CMC);
 
 /**
- * Return the correct results file name.
- * @param conf configuration object
- * @return a string
- */
-cv::string get_res_filename(Configuration conf);
-
-/**
  * Writes the results in the right folders.
  * @param conf configuration file
  * @param CMC

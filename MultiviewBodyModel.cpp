@@ -906,7 +906,7 @@ void init_models(Configuration conf, int rounds, const std::vector<std::vector<c
 
     float t0_models_loading = timing.enabled ? (float)getTickCount() : 0;
     for (int i = 0; i < models_set.size(); ++i) {
-        int tot_poses_num = conf.poses.size();
+        int tot_poses_num = static_cast<int>(conf.poses.size());
         for (int pose_idx = 0; pose_idx < tot_poses_num; ++pose_idx) {
             int frame_idx = pose_idx + (rounds * tot_poses_num);
             models[i].read_pose_compute_descriptors(imgs_paths[i][models_set[i][frame_idx]],
@@ -931,17 +931,6 @@ float area_under_curve(cv::Mat CMC) {
 
     return nAUC;
 }
-
-string get_res_filename(Configuration conf) {
-    stringstream ss;
-    ss << "_O" << conf.occlusion_search
-       << "_K" << conf.keypoint_size
-       << "_MS" << conf.model_set_size
-       << "_P" << conf.poses.size();
-
-    return ss.str();
-}
-
 
 void write_cmc_nauc(Configuration conf, Mat CMC, float nAUC) {
     stringstream ss_name;
